@@ -1,10 +1,9 @@
-# IO functions to read and write wspaces data to disk
+# IO functions to read and write wspaces data to/from disk
 
 # entry sizes by difference to account for vector overhead.
 comp_t <- object.size( c( complex( 1 ), complex( 1 ) ) ) - object.size( complex( 1 ) )
 real_t <- object.size( c( 1.0, 1.0 ) ) - object.size( 1.0 )
 
-# TOOD: Should we allow for failed data IO? i.e. return wspace withouth e.g. vocab?
 #' @export
 load_corpus <- function( dir, lexicon = "lexicon.tsv", frequencies = "frequencies.tsv", pos_table = "pos_counts.tsv", cooccur = "cooccur.bin" ) {
   lxcn = read_lexicon( lexicon )
@@ -40,17 +39,15 @@ read_pos_counts <- function( file, header = TRUE, sep = '@' ) {
   if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
   d <- read.table( file, header = header, sep = sep, quote = "", comment.char = "", row.names = 1 )
   d[ is.na( d ) ] <- 0
-  d$POS <- count_to_factor( d )
+  d$POS <- counts_to_factor( d )
   d$POS_conf <- apply( d[,-length( d )], 1, function( x ) max( x ) / sum( x ) )
   return( d )
 }
 
 #' @export
-#' @useDynLib wspaces read_spm
 read_cooccur <- function( file ) {
   if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
-  spm <- .Call( "read_spm", file )
-  Matrix::sparseMatrix( i = spm$i, j = spm$j, x = spm$x, index1 = FALSE )
+  return( load_spm( file ) )
 }
 
 #' @export

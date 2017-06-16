@@ -6,3 +6,11 @@ load_spm <- function(file) {
     .Call('wspaces_load_spm', PACKAGE = 'wspaces', file)
 }
 
+cooc_to_pmi <- function(m_, ppmi = TRUE, ow = TRUE) {
+    .Call('wspaces_cooc_to_pmi', PACKAGE = 'wspaces', m_, ppmi, ow)
+}
+
+tfidf_weight <- function(m_, df_, mode = 1L, ow = FALSE) {
+    .Call('wspaces_tfidf_weight', PACKAGE = 'wspaces', m_, df_, mode, ow)
+}
+

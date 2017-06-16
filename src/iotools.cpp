@@ -26,3 +26,8 @@ SEXP build_dgTMatrix( IntegerVector i, IntegerVector j, NumericVector x ) {
   Function f = Environment::namespace_env("Matrix")["sparseMatrix"];
   return f( _["i"]=i, _["j"]=j, _["x"]=x, _["index1"]=false );
 }
+
+SEXP build_dgCMatrix( IntegerVector i, IntegerVector p, NumericVector x ) {
+  Function f = Environment::namespace_env("Matrix")["sparseMatrix"];
+  return f( _["i"]=i, _["p"]=p, _["x"]=x, _["index1"]=false );
+}

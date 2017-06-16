@@ -15,7 +15,7 @@ load_corpus <- function( dir, lexicon = "lexicon.tsv", frequencies = "frequencie
     "lexicon" = lxcn,
     "frequencies" = sfrq,
     "pos_counts" = posc,
-    "cooccurrences" = cooc,
+    "cooccurrences" = cooc
   ) )
 }
 

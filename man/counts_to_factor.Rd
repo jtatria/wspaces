@@ -4,7 +4,7 @@
 \alias{counts_to_factor}
 \title{Build a factor from max/min values in a series of variables}
 \usage{
-counts_to_factor(d, var, min = FALSE, conf = FALSE)
+counts_to_factor(d, var, min = FALSE, conf = FALSE, drop = TRUE)
 }
 \arguments{
 \item{d}{A data frame}

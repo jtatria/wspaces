@@ -1,0 +1,2 @@
+counts_to_factor        Build a factor from max/min values in a series
+                        of variables

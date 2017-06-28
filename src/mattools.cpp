@@ -1,97 +1,178 @@
-// [[Rcpp::depends(RcppEigen)]]
 #include <math.h>
 #include <stdio.h>
-#include <RcppEigen.h>
-#include <Rcpp.h>
 #include "mattools.hpp"
 
 using namespace Rcpp;
 
-// [[Rcpp::depends(RcppEigen)]]
-#include <RcppEigen.h>
-
-using namespace Rcpp;
-
-typedef Eigen::MatrixXd Mat;
-typedef Eigen::SparseMatrix<double> SpMat;
-typedef Eigen::Map<SpMat> MSpMat;
-typedef Eigen::VectorXd Vec;
-
-/*
- ' Compute a (P)PMI matrix from raw frequency counts, stored as a column-oriented sparse matrix.
- '
- ' @param m    A colun-oriented sparse matrix containing cooccurrence counts
- ' @param ppmi A logical value indicating whether negative values should be truncated to 0 (i.e.
- '             compute PPMI instead of PMI). TRUE by default.
- ' @param ow   A logical value indicating wether the result should be destructively copied over the
- '             input matrix. TRUE by default.
- '
- ' @return The PMI value for each cell is equal to log( p(i,j) / p(i)p(j) ), i.e. the log of the
- '         observed probability over the expected probability. The PPMI truncates negative values
- '         to 0. WARNING: In order to maintain sparsity, -Inf values in the non-truncated case are
- '         replaced by 0.
- '
-*/
+//' (Positive) Pointwise mutual information.
+//'
+//' Compute a (P)PMI matrix from raw frequency counts, stored as a column-oriented sparse matrix.
+//'
+//' The PMI value for each cell is equal to log( p(i,j) / p(i)p(j) ), i.e. the log of the observed
+//' probability over the expected probability.
+//'
+//' The PPMI variant adds 1 to this value in order to truncate all values to 0 and maintain
+//' sparsity.
+//'
+//' WARNING: In order to prevent a memory explosion, zero-values in the input matrix are never
+//' calculated, which has the numerical side-effect of replacing all -Inf values with zero entries
+//' in the non-truncated output matrix. This is a temporary solution.
+//'
+//' @param m_    A colun-oriented sparse matrix containing cooccurrence counts
+//' @param ppmi  A logical value indicating whether negative values should be truncated to 0 (i.e.
+//'              compute PPMI instead of PMI). TRUE by default.
+//' @param ow    A logical value indicating wether the result should be destructively copied over
+//'              the input matrix. FALSE by default.
+//'
+//' @return An (column-stored sparse) matrix, isomorphic to m_ with the (P)PMI values for m_.
+//'         If ow == TRUE, m_ is replaced with this value.
 // [[Rcpp::export]]
-S4 cooc_to_pmi( SEXP m_, bool ppmi = true, bool ow = true ) {
-  SpMat m = as<MSpMat>( m_ );
-  Vec rs = Vec::Zero( m.rows() );
-  Vec cs = Vec::Zero( m.cols() );
-  double N = m.sum();
-  for( int i = 0; i < m.outerSize(); i++ ) {
-    for( SpMat::InnerIterator it( m, i ); it; ++it ) {
-      double v = it.value();
-      rs[it.row()] += v / N;
-      cs[it.col()] += v / N;
-    }
-  }
-  SpMat tgt = ow ? m : as<MSpMat>( clone( m_ ) );
-  for( int i = 0; i < m.outerSize(); i++ ) {
-    for( SpMat::InnerIterator it( m, i ); it; ++it ) {
-      int r = it.row();
-      int c = it.col();
-      double v = ( m.coeff( r, c ) / N ) / ( rs[r] * cs[c] ) + ( ppmi ? 1 : 0 );
-      tgt.coeffRef( r, c ) = std::log<double>( v ).real();
+S4 spm_pmi( S4 m_, NumericVector rs_, NumericVector cs_, bool ppmi = true, bool ow = false ) {
+  SpMat src = Rcpp::as<MSpMat>( m_ );
+  Vec   rs  = Rcpp::as<Vec>( rs_ );
+  Vec   cs  = Rcpp::as<Vec>( cs_ );
+
+  double N = src.sum();
+  SpMat tgt = ow ? src : Rcpp::as<MSpMat>( Rcpp::clone( m_ ) );
+  for( int i = 0; i < src.outerSize(); i++ ) {
+    for( SpMat::InnerIterator srcIt( src, i ), tgtIt( tgt, i ); srcIt; ++srcIt, ++tgtIt ) {
+      int r = srcIt.row();
+      int c = srcIt.col();
+      tgtIt.valueRef() = std::log<double>(
+        ( srcIt.value() / N ) / ( rs[r] * cs[c] ) + ( ppmi ? 1 : 0 )
+      ).real();
     }
   }
 
-  return Rcpp::wrap( tgt );
+  S4 out = Rcpp::wrap( tgt );
+  out.slot( "Dimnames" ) = m_.slot( "Dimnames" );
+  return out;
 }
 
+//' TF-IDF weighting.
+//'
+//' Weigth the given frequency matrix using the TF-IDF stategy.
+//'
+//' TF-IDF weights attempt to moderate the effect of very common terms, by dividing the total
+//' frequency of a term within a context (i.e. a document, but in general any corpus segment),
+//' by the number of contexts in which the term appears.
+//'
+//' The idea behind this approach is that terms that appear in every possible context do not
+//' provide any additional information to the contexts in which they appear. Hence, all TF-IDF
+//' strategies compute weights as some variation of \eqn{TF_{t,c} / IDF_{t}}, where
+//' \eqn{TF_{t,c}} is a monotonic function of a term t's prevalence within a specific context
+//' c and \eqn{IDF_{t}} is an inversely monotonic function of the term t's prevalence in all
+//' contexts across the entire corpus.
+//'
+//' Note that the TF term is valid for a term in a context, while the IDF term is valid for a
+//' term across the entire corpus.
+//'
+//' Values of tf_mode and idf_mode indicate how the TF and IDF terms are computed, as indicated
+//' below.
+//'
+//' \itemize{
+//'   \item{TF modes}
+//'   \itemize{
+//'     \item{0: Boolean: 1 if tf > 0; 0 otherwise.}
+//'     \item{1: Raw: Raw term frequency.}
+//'     \item{2: Normalized: (default) Term frequency divided by the total number of terms
+//'              in document (the 'length').}
+//'     \item{3: Log-normlized: Natural log of the term frequency over total document
+//'              terms, + 1.}
+//'     \item{4: 0.5 normalized: K*(1-K) * (tf / max( tf ) ), with K set to 0.5.}
+//'   }
+//'   \item{IDF modes}
+//'   \itemize{
+//'     \item{0: Unary: 1 if df > 0, but terms with 0 DF are by definition excluded of the
+//'              lexicon, so 1.}
+//'     \item{1: Plain: log of total number of documents, D, over the term's df.}
+//'     \item{2: Smooth: (default) log of total number of documents, D, over the term's df,
+//'              plus 1.}
+//'     \item{3: Max: log of maximum df, over the term's df.}
+//'     \item{4: Probabilistic: log of the total number of documents minus the term's df
+//'              over the term's df.}
+//'   }
+//' }
+//'
+//' @param tf_       A matrix with one row for each term, and as many columns as documents or corpus
+//'                  segments there are frequencies for.
+//' @param df_       A vector of length equal the number of rows in tf_, containing document
+//'                  frequencies, to compute the IDF component.
+//' @param tf_mode   A term frequency weigthing strategy. See details.
+//' @param idf_mode  An inverse document frequency weigthing strategy. See details.
+//' @param ow        A logical vector indicating whether the result should be destructively copied
+//'                  over the input matrix.
+//'
+//' @return An isomorphic matrix to tf_, with entries weighted by the given strategy. If ow == TRUE,
+//'        tf_ is replaced with this value.
 // [[Rcpp::export]]
-NumericMatrix tfidf_weight( NumericMatrix m_, NumericVector df_, int mode = 1, bool ow = false ) {
-  Mat m = as<Mat>( m_ );
-  Vec df = as<Vec>( clone( df_ ) );
-  if( m.rows() != df.rows() ) {
-
+NumericMatrix weight_tfidf(
+    NumericMatrix tf_, NumericVector df_, int tf_mode = 2, int idf_mode = 2, bool ow = false
+) {
+  if( tf_.rows() != df_.length() ) {
     // stop( std::sprintf( "Wrong dim for DF vector: got %d, wanted %d", df.rows(), m.cols() ) ;)
   }
+  Mat m  = Rcpp::as<Mat>( tf_ );
+  Vec df = Rcpp::as<Vec>( clone( df_ ) );
 
-  Vec L = m.colwise().sum();
-  double D = df.sum();
-  df = ( df / D ).array().log1p().matrix();
-
-  Mat out = ow ? m : as<Mat>( clone( m_ ) );
+  Vec L  = m.colwise().sum();
+  Vec idfs = idf( idf_mode, df, m.cols() );
+  Mat out = ow ? m : Rcpp::as<Mat>( Rcpp::clone( tf_ ) );
   for( int i = 0; i < m.cols(); i++ ) {
-    out.col( i ) /= L[i] * ( std::log1p( D / df[i] ) );
+    out.col( i ) = ( tf( tf_mode, m.col( i ), L[i] ) ).array() * ( idfs.array() );
   }
 
-  df = ( df / D ).array().log1p().matrix();
-  Rcout << "out: (" << out.rows() << "," << out.cols() << ")" << std::endl;
-  return wrap( out );
+  return Rcpp::wrap( out );
 }
 
-class IDF {
-  public:
-  double weight( long D, long d ) {
+// [[Rcpp::export]]
+Rcpp::NumericVector idf( Rcpp::NumericVector dfs_, double D, int mode = 2 ) {
+  return Rcpp::wrap( idf( mode, Rcpp::as<Vec>( dfs_ ), D ) );
+}
+
+// [[Rcpp::export]]
+Rcpp::NumericVector tf( Rcpp::NumericVector tfs_, double L, int mode = 2 ) {
+  return Rcpp::wrap( tf( mode, Rcpp::as<Vec>( tfs_ ), L ) );
+}
+
+//' Cosine distances.
+//'
+//' Compute the cosine distance between the given vectors. The cosine distance between vectors
+//' i and j is equal to the dot product between them divided by the product of their norms:
+//' \eqn{ ( i \dot j ) / [[i]]*[[j]] }.
+//'
+//' The given matrix will be interpreted as an array of column vectors for which cosine distances
+//' will be computed. If transpose == TRUE, the matrix will be interpreted as an array of row
+//' vectors. In any case, the resulting matrix will be square, symmetric, and with dimensions
+//' equal to the number of (column or row) vectors.
+//'
+//'
+//' @param m_        A matrix of column (or row) vectors for which to compute distances.
+//' @param transpose A logical vector indicating if distances should be computed across row vectors.
+//'                  False by default.
+//'
+//' @return A square symmetric matrix of dimension equal to the column (or row) dimension of the
+//'         given input matrix of cosine distances between the column (or row) vectors in the input
+//'         matrix.
+// [[Rcpp::export]]
+Rcpp::NumericMatrix vector_cosine( Rcpp::NumericMatrix m_, bool transpose = false ) {
+  Mat m = Rcpp::as<Mat>( m_ );
+  m = transpose ? m.transpose() : m;
+  Mat out( m.cols(), m.cols() );
+  for( int i = 0; i < m.cols(); i++ ) {
+    for( int j = 0; j < m.cols(); j++ ) {
+      Vec vi = m.col( i );
+      Vec vj = m.col( j );
+      out.coeffRef( i, j ) = ( vi.dot( vj ) ) / ( vi.norm() * vj.norm() );
+    }
   }
-};
+  return Rcpp::wrap( out );
+}
 
 /*** R
   m <- matrix( c( 1,1,1,1,2,0,0,2,1,0,0,3 ), nrow = 6, byrow = TRUE )
   rownames( m ) <- c( "this", "is", "a", "another", "sample", "example" )
   m
-  df <- rowSums( m )
+  df <- rowSums( ( m > 0 ) * 1 )
   tfidf_weight( m, df )
 */
-

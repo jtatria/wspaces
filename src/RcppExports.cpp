@@ -7,48 +7,92 @@
 using namespace Rcpp;
 
 // load_spm
-S4 load_spm(CharacterVector file);
+S4 load_spm(std::string file);
 RcppExport SEXP wspaces_load_spm(SEXP fileSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< CharacterVector >::type file(fileSEXP);
+    Rcpp::traits::input_parameter< std::string >::type file(fileSEXP);
     rcpp_result_gen = Rcpp::wrap(load_spm(file));
     return rcpp_result_gen;
 END_RCPP
 }
-// cooc_to_pmi
-S4 cooc_to_pmi(SEXP m_, bool ppmi, bool ow);
-RcppExport SEXP wspaces_cooc_to_pmi(SEXP m_SEXP, SEXP ppmiSEXP, SEXP owSEXP) {
+// spm_pmi
+S4 spm_pmi(S4 m_, NumericVector rs_, NumericVector cs_, bool ppmi, bool ow);
+RcppExport SEXP wspaces_spm_pmi(SEXP m_SEXP, SEXP rs_SEXP, SEXP cs_SEXP, SEXP ppmiSEXP, SEXP owSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type m_(m_SEXP);
+    Rcpp::traits::input_parameter< S4 >::type m_(m_SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type rs_(rs_SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type cs_(cs_SEXP);
     Rcpp::traits::input_parameter< bool >::type ppmi(ppmiSEXP);
     Rcpp::traits::input_parameter< bool >::type ow(owSEXP);
-    rcpp_result_gen = Rcpp::wrap(cooc_to_pmi(m_, ppmi, ow));
+    rcpp_result_gen = Rcpp::wrap(spm_pmi(m_, rs_, cs_, ppmi, ow));
     return rcpp_result_gen;
 END_RCPP
 }
-// tfidf_weight
-NumericMatrix tfidf_weight(NumericMatrix m_, NumericVector df_, int mode, bool ow);
-RcppExport SEXP wspaces_tfidf_weight(SEXP m_SEXP, SEXP df_SEXP, SEXP modeSEXP, SEXP owSEXP) {
+// weight_tfidf
+NumericMatrix weight_tfidf(NumericMatrix tf_, NumericVector df_, int tf_mode, int idf_mode, bool ow);
+RcppExport SEXP wspaces_weight_tfidf(SEXP tf_SEXP, SEXP df_SEXP, SEXP tf_modeSEXP, SEXP idf_modeSEXP, SEXP owSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericMatrix >::type m_(m_SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type tf_(tf_SEXP);
     Rcpp::traits::input_parameter< NumericVector >::type df_(df_SEXP);
-    Rcpp::traits::input_parameter< int >::type mode(modeSEXP);
+    Rcpp::traits::input_parameter< int >::type tf_mode(tf_modeSEXP);
+    Rcpp::traits::input_parameter< int >::type idf_mode(idf_modeSEXP);
     Rcpp::traits::input_parameter< bool >::type ow(owSEXP);
-    rcpp_result_gen = Rcpp::wrap(tfidf_weight(m_, df_, mode, ow));
+    rcpp_result_gen = Rcpp::wrap(weight_tfidf(tf_, df_, tf_mode, idf_mode, ow));
+    return rcpp_result_gen;
+END_RCPP
+}
+// idf
+Rcpp::NumericVector idf(Rcpp::NumericVector dfs_, double D, int mode);
+RcppExport SEXP wspaces_idf(SEXP dfs_SEXP, SEXP DSEXP, SEXP modeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type dfs_(dfs_SEXP);
+    Rcpp::traits::input_parameter< double >::type D(DSEXP);
+    Rcpp::traits::input_parameter< int >::type mode(modeSEXP);
+    rcpp_result_gen = Rcpp::wrap(idf(dfs_, D, mode));
+    return rcpp_result_gen;
+END_RCPP
+}
+// tf
+Rcpp::NumericVector tf(Rcpp::NumericVector tfs_, double L, int mode);
+RcppExport SEXP wspaces_tf(SEXP tfs_SEXP, SEXP LSEXP, SEXP modeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type tfs_(tfs_SEXP);
+    Rcpp::traits::input_parameter< double >::type L(LSEXP);
+    Rcpp::traits::input_parameter< int >::type mode(modeSEXP);
+    rcpp_result_gen = Rcpp::wrap(tf(tfs_, L, mode));
+    return rcpp_result_gen;
+END_RCPP
+}
+// vector_cosine
+Rcpp::NumericMatrix vector_cosine(Rcpp::NumericMatrix m_, bool transpose);
+RcppExport SEXP wspaces_vector_cosine(SEXP m_SEXP, SEXP transposeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type m_(m_SEXP);
+    Rcpp::traits::input_parameter< bool >::type transpose(transposeSEXP);
+    rcpp_result_gen = Rcpp::wrap(vector_cosine(m_, transpose));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
     {"wspaces_load_spm", (DL_FUNC) &wspaces_load_spm, 1},
-    {"wspaces_cooc_to_pmi", (DL_FUNC) &wspaces_cooc_to_pmi, 3},
-    {"wspaces_tfidf_weight", (DL_FUNC) &wspaces_tfidf_weight, 4},
+    {"wspaces_spm_pmi", (DL_FUNC) &wspaces_spm_pmi, 5},
+    {"wspaces_weight_tfidf", (DL_FUNC) &wspaces_weight_tfidf, 5},
+    {"wspaces_idf", (DL_FUNC) &wspaces_idf, 3},
+    {"wspaces_tf", (DL_FUNC) &wspaces_tf, 3},
+    {"wspaces_vector_cosine", (DL_FUNC) &wspaces_vector_cosine, 2},
     {NULL, NULL, 0}
 };
 

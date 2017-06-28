@@ -1,0 +1,42 @@
+
+R version 3.3.2 (2016-10-31) -- "Sincere Pumpkin Patch"
+Copyright (C) 2016 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> pkgname <- "wspaces"
+> source(file.path(R.home("share"), "R", "examples-header.R"))
+> options(warn = 1)
+> library('wspaces')
+> 
+> base::assign(".oldSearch", base::search(), pos = 'CheckExEnv')
+> cleanEx()
+> nameEx("counts_to_factor")
+> ### * counts_to_factor
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: counts_to_factor
+> ### Title: Build a factor from max/min values in a series of variables
+> ### Aliases: counts_to_factor
+> 
+> ### ** Examples
+> 
+> d <- as.data.frame( matrix( rnorm( 300 ), nrow = 100, ncol = 3 ) )
+> names( d ) <- c( 'red', 'blue', 'green' )
+> count_to_factor( d )
+Error: could not find function "count_to_factor"
+Execution halted

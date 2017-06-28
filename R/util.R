@@ -14,15 +14,21 @@
 #' count_to_factor( d )
 #'
 #' @export
-#' @importFrom magrittr "%>%"
-counts_to_factor <- function( d, var, min = FALSE, conf = FALSE ) {
+counts_to_factor <- function( d, var, min = FALSE, conf = FALSE, drop = TRUE ) {
   if( missing( var ) ) var = names( d )
   if( !all( apply( d[ , var ], 2, is.real ) ) ) stop( "Count variables must be numeric or integer" )
+out <- factor( apply( d[,var], 1, findMax ), var )
+  if( drop ) out <- droplevels( out )
   return( factor( apply( d[,var], 1, findMax ), var ) )
 }
 
-#' @importFrom Matrix Matrix
+#' @importFrom Matrix rowSums colSums
+cooc_to_pmi <- function( m_, rs = rowSums( m_ ), cs = colSums( m_ ), ppmi = TRUE, ow = FALSE ) {
+    return( spm_pmi( m_, rs, cs, ppmi, ow ) )
+}
+
 #' @export
+#' @importFrom Matrix Matrix
 makeSpm <- function( rows = 100, cols = 100, p = 0.1, v = 1 ) {
   d <- sample( rbinom( rows*cols, 1, p ), rows*cols, TRUE )
   d <- d * v;
@@ -40,4 +46,5 @@ is.real <- function( x ) {
   is.numeric( x ) || is.integer( x )
 }
 
-
+#' @export
+"%.%" <- function( ... ) paste( ..., sep ='' )

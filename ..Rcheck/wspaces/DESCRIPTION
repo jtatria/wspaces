@@ -9,13 +9,8 @@ Description: More about what it does (maybe more than one line)
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
-Imports:
-    Rcpp (>= 0.12.11),
-    Matrix,
-    data.table,
-    rJava
-LinkingTo:
-    Rcpp,
-    RcppEigen
+Imports: Rcpp (>= 0.12.11), RcppEigen, Matrix, magrittr
+LinkingTo: Rcpp, RcppEigen
 RoxygenNote: 6.0.1
-SystemRequirements: C++11, Java
+SystemRequirements: C++11
+Built: R 3.3.2; x86_64-pc-linux-gnu; 2017-06-16 20:26:51 UTC; unix

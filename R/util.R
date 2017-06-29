@@ -3,6 +3,7 @@
 #' @param d   A data frame
 #' @param var An optional list of variables to compare
 #' @param min If true, use minimum instead of maximum
+#' @param drop If true, drop levels from created factor.
 #'
 #' @return A factor of the same length as d, where the value for each observation will correspond
 #'         to the name of the column in var that

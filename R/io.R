@@ -30,8 +30,8 @@ real_t <- object.size( c( 1.0, 1.0 ) ) - object.size( 1.0 )
 #'
 #' @export
 load_corpus <- function(
-    dir = getwd(), lexicon = "lexicon.dsv", frequencies = "frequencies.dsv",
-    pos_counts = "pos_counts.dsv", cooccur = "cooccur.bin",
+    dir = getwd(), lexicon = "lxcn.dsv", frequencies = "freq.dsv",
+    pos_counts = "posc.dsv", cooccur = "cooc.bin",
     quiet = FALSE, attach = FALSE, env = .GlobalEnv
 ) {
     if( !quiet ) message( sprintf( "Loading corpus data from %s", dir ) )
@@ -51,35 +51,41 @@ load_corpus <- function(
 
     posc = read_pos_counts( file.path( dir, pos_counts ) )
     if( nrow( lxcn ) != nrow( posc ) ) corpus_io_error( "posc", nrow( lxcn ), nrow( posc ) )
-    if( !quiet ) message( sprintf(
-        'POS counts recorded for %d tags. Tagset: [ %s ]. Mean pos conf.: %4.2f; std. dev.: %4.2f',
-        ncol( posc ) - 2, paste( colnames( posc )[ 1:( ncol( posc ) - 2 ) ], collapse = ' ' ),
-        mean( posc$POS_conf, na.rm = TRUE ), sd( posc$POS_conf, na.rm = TRUE )
-    ) )
+    if( !quiet ) {
+        message( sprintf(
+            'POS counts recorded for %d tags. Tagset: [ %s ]. Mean pos conf.: %4.2f; std. dev.: %4.2f',
+            ncol( posc ) - 2, paste( colnames( posc )[ 1:( ncol( posc ) - 2 ) ], collapse = ' ' ),
+            mean( posc$POS_conf, na.rm = TRUE ), sd( posc$POS_conf, na.rm = TRUE )
+        ) )
+        values = summary( posc$POS )
+        for( pos in names( values ) ) {
+            message( sprintf( "%s:\t%d", pos, values[pos] ) )
+        }
+    }
 
-    cooc = read_cooccur( file.path( dir, cooccur ), lxcn = lxcn )
-    if( nrow( lxcn ) != nrow( posc ) ) corpus_io_error( "cooc", nrow( lxcn ), nrow( posc ) )
-    if( !quiet ) message( sprintf(
-        "Cooccurrence counts loaded as %dx%d matrix with %d non-zero entries (%5.4f%% fill)",
-        nrow( cooc ), ncol( cooc ), Matrix::nnzero( cooc ),
-        100 *( Matrix::nnzero( cooc ) / ( as.numeric( nrow( cooc ) ) * as.numeric( ncol( cooc ) ) ) )
-    ) )
+    if( file.exists( file.path( dir, cooccur ) ) ) {
+        cooc_file = file.path( dir, cooccur )
+        if( !quiet ) {
+            message( sprintf( "Loading cooccurrence counts found in %s", cooc_file ) )
+        }
+        cooc = read_cooccur( file.path( dir, cooccur ), lxcn = lxcn )
+        if( nrow( lxcn ) != nrow( cooc ) ) corpus_io_error( "cooc", nrow( lxcn ), nrow( cooc ) )
+        if( !quiet ) message( sprintf(
+            "Cooccurrence counts loaded as %dx%d matrix with %d non-zero entries (%5.4f%% fill)",
+            nrow( cooc ), ncol( cooc ), Matrix::nnzero( cooc ),
+            100 *( Matrix::nnzero( cooc ) / ( as.numeric( nrow( cooc ) ) * as.numeric( ncol( cooc ) ) ) )
+        ) )
+    }
 
     corpus <- list(
         "lxcn" = lxcn,
         "freq" = freq,
-        "posc" = posc,
-        "cooc" = cooc
+        "posc" = posc
     )
+    if( exists( 'cooc' ) ) corpus$cooc <- cooc;
 
     if( attach ) list2env( corpus, envir = env )
-
-    return( list(
-        "lxcn" = lxcn,
-        "freq" = freq,
-        "posc" = posc,
-        "cooc" = cooc
-    ) )
+    return( corpus )
 }
 
 #' Read lexicon data from DSV file.
@@ -149,11 +155,11 @@ read_frequencies <- function( file, header = TRUE, sep = '@', lxcn = NULL ) {
 #' are POS groups in the corresponding tagset, with each term's counts on each POS group.
 #'
 #' @export
-read_pos_counts <- function( file, header = TRUE, sep = '@', drop = TRUE ) {
+read_pos_counts <- function( file, header = TRUE, sep = '@' ) {
     if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
     d <- read.table( file, header = header, sep = sep, quote = "", comment.char = "", row.names = 1 )
     d[ is.na( d ) ] <- 0
-    d$POS <- counts_to_factor( d, drop = drop )
+    d$POS <- counts_to_factor( d, drop = TRUE )
     d$POS_conf <- apply( d[,-length( d )], 1, function( x ) max( x ) / sum( x ) )
     return( d )
 }
@@ -191,7 +197,7 @@ read_pos_counts <- function( file, header = TRUE, sep = '@', drop = TRUE ) {
 #'
 #' @export
 #' @importFrom Matrix rowSums colSums
-read_cooccur <- function( file, lxcn = NULL, shrink = FALSE ) {
+read_cooccur <- function( file, lxcn = NULL, shrink = !is.null( lxcn ) ) {
     if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
     m <- load_spm( file )
     if( !is.null( lxcn ) ) {

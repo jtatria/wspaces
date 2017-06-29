@@ -4,7 +4,7 @@
 \alias{read_cooccur}
 \title{Read cooccurrence matrix from disk.}
 \usage{
-read_cooccur(file, lxcn = NULL, shrink = FALSE)
+read_cooccur(file, lxcn = NULL, shrink = !is.null(lxcn))
 }
 \arguments{
 \item{file}{Location of the cooccurrence matrix file on disk.}

@@ -4,10 +4,9 @@
 \alias{load_corpus}
 \title{Load corpus data from the given directory.}
 \usage{
-load_corpus(dir = getwd(), lexicon = "lexicon.dsv",
-  frequencies = "frequencies.dsv", pos_counts = "pos_counts.dsv",
-  cooccur = "cooccur.bin", quiet = FALSE, attach = FALSE,
-  env = .GlobalEnv)
+load_corpus(dir = getwd(), lexicon = "lxcn.dsv", frequencies = "freq.dsv",
+  pos_counts = "posc.dsv", cooccur = "cooc.bin", quiet = FALSE,
+  attach = FALSE, env = .GlobalEnv)
 }
 \arguments{
 \item{dir}{Directory to find corpus data files in.}

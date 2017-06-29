@@ -12,6 +12,8 @@ counts_to_factor(d, var, min = FALSE, conf = FALSE, drop = TRUE)
 \item{var}{An optional list of variables to compare}
 
 \item{min}{If true, use minimum instead of maximum}
+
+\item{drop}{If true, drop levels from created factor.}
 }
 \value{
 A factor of the same length as d, where the value for each observation will correspond

@@ -1,8 +1,14 @@
 .directory
 .R*
+
 src/*.o
 src/*.so
 src/*.dll
+
 .Rproj.user
+
+man/*
+R/RcppExports.R
+src/RcppExports.cpp
 NAMESPACE
 

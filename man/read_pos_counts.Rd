@@ -4,7 +4,7 @@
 \alias{read_pos_counts}
 \title{Read POS count data from DSV file.}
 \usage{
-read_pos_counts(file, header = TRUE, sep = "@")
+read_pos_counts(file, header = TRUE, sep = "@", drop = TRUE)
 }
 \arguments{
 \item{file}{Location of the POS count data file on disk.}

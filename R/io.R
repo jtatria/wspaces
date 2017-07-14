@@ -1,4 +1,22 @@
-# IO functions to read and write wspaces data to/from disk
+#
+# Copyright (C) 2017 José Tomás Atria <jtatria at gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+####################################################################################################
+#### IO functions to read and write wspaces data to/from disk                                   ####
+####################################################################################################
 
 # entry sizes by difference to account for vector overhead.
 comp_t <- object.size( c( complex( 1 ), complex( 1 ) ) ) - object.size( complex( 1 ) )
@@ -69,7 +87,12 @@ load_corpus <- function(
             message( sprintf( "Loading cooccurrence counts found in %s", cooc_file ) )
         }
         cooc = read_cooccur( file.path( dir, cooccur ), lxcn = lxcn )
-        if( nrow( lxcn ) != nrow( cooc ) ) corpus_io_error( "cooc", nrow( lxcn ), nrow( cooc ) )
+        if( nrow( lxcn ) != nrow( cooc ) ) {
+            stop( sprintf(
+                "Wrong dimensions in cooccurence file: exp %d, got %d",
+                nrow( lxcn ), nrow( cooc )
+            ) )
+        }
         if( !quiet ) message( sprintf(
             "Cooccurrence counts loaded as %dx%d matrix with %d non-zero entries (%5.4f%% fill)",
             nrow( cooc ), ncol( cooc ), Matrix::nnzero( cooc ),
@@ -155,10 +178,11 @@ read_frequencies <- function( file, header = TRUE, sep = '@', lxcn = NULL ) {
 #' are POS groups in the corresponding tagset, with each term's counts on each POS group.
 #'
 #' @export
-read_pos_counts <- function( file, header = TRUE, sep = '@' ) {
+read_pos_counts <- function( file, header = TRUE, sep = '@', drop = TRUE ) {
     if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
     d <- read.table( file, header = header, sep = sep, quote = "", comment.char = "", row.names = 1 )
     d[ is.na( d ) ] <- 0
+    if( drop ) d <- d[, colSums( d ) != 0 ]
     d$POS <- counts_to_factor( d, drop = TRUE )
     d$POS_conf <- apply( d[,-length( d )], 1, function( x ) max( x ) / sum( x ) )
     return( d )
@@ -197,23 +221,18 @@ read_pos_counts <- function( file, header = TRUE, sep = '@' ) {
 #'
 #' @export
 #' @importFrom Matrix rowSums colSums
-read_cooccur <- function( file, lxcn = NULL, shrink = !is.null( lxcn ) ) {
+read_cooccur <- function( file, lxcn = NULL, shrink = is.null( lxcn ) ) {
     if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
-    m <- load_spm( file )
+    m <- load_spm( path.expand( file ) )
     if( !is.null( lxcn ) ) {
-      if( nrow( m ) > nrow( lxcn ) ) {
-        stop(
-          paste(
-            "Wrong number of dimensions in cooccurrence matrix:", nrow( m ),
-            "is larger than the number of terms in the lexicon", nrow( lxcn )
-          )
-        )
-      }
-      rownames( m ) <- rownames( lxcn )[ 1:nrow( m ) ]
-      colnames( m ) <- rownames( lxcn )[ 1:ncol( m ) ]
+        if( ( exp = nrow( lxcn ) ) != ( obs = nrow( m ) ) ) {
+            stop( sprintf( "Wrong dimensions in cooccurence file: exp %d, got %d", exp, obs ) )
+        }
+        rownames( m ) <- rownames( lxcn )[ 1:nrow( m ) ]
+        colnames( m ) <- rownames( lxcn )[ 1:ncol( m ) ]
     } else {
-      rownames( m ) <- as.character( 1:nrow( m ) )
-      colnames( m ) <- as.character( 1:ncol( m ) )
+        rownames( m ) <- as.character( 1:nrow( m ) )
+        colnames( m ) <- as.character( 1:ncol( m ) )
     }
     if( shrink ) m <- m[ rowSums( m ) > 0, colSums( m ) > 0 ]
     return( m )

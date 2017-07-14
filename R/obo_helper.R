@@ -1,3 +1,23 @@
+#
+# Copyright (C) 2017 José Tomás Atria <jtatria at gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+####################################################################################################
+#### RJava functions for creating and controlling OBO session objects.                          ####
+####################################################################################################
+
 NS <- "edu.columbia.incite.obo"
 OBO_CLZ <- paste( NS, 'OBOMain', sep = "/" )
 
@@ -34,12 +54,38 @@ make_obo_conf <- function() {
 #'
 #' @export
 #' @importFrom rJava .jinit .jnew %instanceof%
-make_obo <- function( conf = make_obo_conf() ) {
+make_obo <- function( home = getwd(), conf = make_obo_conf() ) {
     .jinit()
     if( !conf %instanceof% paste( NS, 'OBOConf', sep = "/" ) ) {
         stop( 'conf is not an OBOConf instance' )
     }
+    conf$set( 'homeDir', path.expand( home ) )
     return( .jnew( OBO_CLZ, conf ) )
+}
+
+#' Rebuild corpus datasets.
+#'
+#' This function will rebuild all corpus datasets using the parameters currently found in the given
+#' obo object's configuration.
+#'
+#' The produced data sets will be dumped into the current configuration's data directory, using the
+#' configured filenames.
+#'
+#' @param obo An OBO interface object.
+#' @param realod Logical indicating whether the new corpus files should be reloaded.
+#' @param ...   Further arguments passed to load_corpus. Ignored if reload is FALSE.
+#'
+#' @return If reload, the value of load_corpus. NULL otherwise.
+#'
+#' @export
+#' @importFrom rJava .jinit J
+corpus_rebuild <- function( obo, reload = TRUE, ... ) {
+    .jinit()
+    if( !obo %instanceof% OBO_CLZ ) stop( 'Object is not an OBOMain instance' )
+    J( obo, 'rebuildCorpus' )
+    if( reload ) {
+        load_corpus( obo$conf$dataDir()$toString(), ... )
+    }
 }
 
 #' Build document sets.
@@ -73,6 +119,31 @@ make_doc_set <- function( obo, field, terms ) {
     }
 }
 
+#' Count cooccurrences over the given document set.
+#'
+#' Produces a sparse matrix containing cooccurrence counts for all terms in the analysis field over
+#' all documents in the given document set.
+#'
+#' @param obo   An OBO interface object.
+#' @param ds    A DocSet, built from \code{\link{make_doc_set}}.
+#'
+#' @return A sparse matrix containing cooccurrence counts for all terms in the given field in the
+#' given sample of documents.
+#'
+#' @export
+#' @importFrom Matrix sparseMatrix rowSums colSums
+#' @importFrom rJava .jinit
+get_cooccurrences <- function( obo, lxcn = lexicon( obo ), ds = obo$docSample(), shrink = TRUE ) {
+    .jinit()
+    cooc <- obo$countCooccurrences( ds )
+    ar <- cooc$arrays()
+    m <- sparseMatrix( i = ar$i + 1, j = ar$j + 1, x = ar$x )
+    rownames( m ) <- rownames( lxcn )[ 1:nrow( m ) ]
+    colnames( m ) <- rownames( lxcn )[ 1:ncol( m ) ]
+    if( shrink ) m <- m[ rowSums( m ) > 0, colSums( m ) > 0 ]
+    return( sparseMatrix( i = m$i + 1, j = m$j + 1, x = m$x ) )
+}
+
 #' Get all fields contained in the index.
 #'
 #' Obtains a character vector with all fields contained in the corpus index.
@@ -86,7 +157,7 @@ make_doc_set <- function( obo, field, terms ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J %instanceof%
-get_index_fields <- function( obo ) {
+index_fields <- function( obo ) {
     .jinit()
     if( !obo %instanceof% OBO_CLZ ) stop( 'Object is not an OBOMain instance' )
     return( J( paste( NS, 'util', 'RHelper', sep ='/'), 'fields', obo$indexReader() ) )
@@ -106,7 +177,7 @@ get_index_fields <- function( obo ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J %instanceof%
-get_field_terms <- function( obo, field ) {
+index_field_terms <- function( obo, field ) {
     .jinit()
     if( !obo %instanceof% OBO_CLZ ) stop( 'Object is not an OBOMain instance' )
     if( length( field ) > 1 ) {
@@ -115,23 +186,15 @@ get_field_terms <- function( obo, field ) {
     return( J( paste( NS, 'util', 'RHelper', sep ='/'), 'terms', obo$indexReader(), field[1] ) )
 }
 
-#' Count cooccurrences over the given document set.
-#'
-#' Produces a sparse matrix containing cooccurrence counts for all terms in the analysis field over
-#' all documents in the given document set.
-#'
-#' @param obo   An OBO interface object.
-#' @param ds    A DocSet, built from \code{\link{make_doc_set}}.
-#'
-#' @return A sparse matrix containing cooccurrence counts for all terms in the given field in the
-#' given sample of documents.
-#'
+#' Get a copy of the lexicon.
+#' @param obo An OBO interface object.
+#' @return A lexicon data frame, with terms as row names and tf and df as columns.
 #' @export
-#' @importFrom Matrix sparseMatrix
 #' @importFrom rJava .jinit
-get_cooccurrences <- function( obo, ds = obo$defaultDocSet() ) {
+lexicon <- function( obo ) {
     .jinit()
-    cooc <- obo$countCooccurrences( ds )
-    m <- cooc$arrays()
-    return( sparseMatrix( i = m$i + 1, j = m$j + 1, x = m$x ) )
+    ar = obo$lexicon()$arrays()
+    lxcn <- data.frame( tf = ar$tf, df = ar$df )
+    rownames( lxcn ) <- ar$keys
+    return( lxcn )
 }

@@ -1,31 +1,10 @@
 #include <math.h>
 #include <stdio.h>
-#include "mattools.hpp"
+#include "tfidf.hpp"
 
 using namespace Rcpp;
 
-//' (Positive) Pointwise mutual information.
-//'
-//' Compute a (P)PMI matrix from raw frequency counts, stored as a column-oriented sparse matrix.
-//'
-//' The PMI value for each cell is equal to log( p(i,j) / p(i)p(j) ), i.e. the log of the observed
-//' probability over the expected probability.
-//'
-//' The PPMI variant adds 1 to this value in order to truncate all values to 0 and maintain
-//' sparsity.
-//'
-//' WARNING: In order to prevent a memory explosion, zero-values in the input matrix are never
-//' calculated, which has the numerical side-effect of replacing all -Inf values with zero entries
-//' in the non-truncated output matrix. This is a temporary solution.
-//'
-//' @param m_    A colun-oriented sparse matrix containing cooccurrence counts
-//' @param ppmi  A logical value indicating whether negative values should be truncated to 0 (i.e.
-//'              compute PPMI instead of PMI). TRUE by default.
-//' @param ow    A logical value indicating wether the result should be destructively copied over
-//'              the input matrix. FALSE by default.
-//'
-//' @return An (column-stored sparse) matrix, isomorphic to m_ with the (P)PMI values for m_.
-//'         If ow == TRUE, m_ is replaced with this value.
+//' @internal
 // [[Rcpp::export]]
 S4 spm_pmi( S4 m_, NumericVector rs_, NumericVector cs_, bool ppmi = true, bool ow = false ) {
   SpMat src = Rcpp::as<MSpMat>( m_ );

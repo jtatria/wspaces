@@ -1,4 +1,6 @@
-#include "iotools.hpp"
+#include <iostream>
+#include <stdio.h>
+#include "io.hpp"
 
 using namespace Rcpp;
 

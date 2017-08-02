@@ -14,12 +14,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-####################################################################################################
-#### RJava functions for creating and controlling OBO session objects.                          ####
-####################################################################################################
+# RJava functions for creating and controlling OBO session objects.
+# TODO: refactor to encapsulate native jav amethods in obo object.
+# TODO: refactor to do without obo objects
 
-NS <- "edu.columbia.incite.obo"
-OBO_CLZ <- paste( NS, 'OBOMain', sep = "/" )
+NS       <- "edu/columbia/incite/obo"
+OBO_CLZ  <- paste( NS, 'OBO', sep="/" )
+CONF_CLZ <- paste( NS, 'OBOConf', sep='/' )
+RHLP_CLZ <- paste( NS, 'util', 'RHelper', sep ='/')
 
 #' Create a new OBO conf object
 #'
@@ -29,16 +31,21 @@ OBO_CLZ <- paste( NS, 'OBOMain', sep = "/" )
 #' @return An OBOConf instance.
 #'
 #' @examples
-#' conf <- make_obo_conf()
+#' conf <- obo_mkconf()
 #' conf@set( 'wPre', 10 ) # Set cooccurrence window leading offset to 10.
 #' conf$set( 'wPos', 10 ) # Set cooccurrence window trailing offset to 10.
-#' obo <- make_obo( conf ) # obtain an OBO index interface object.
+#' obo <- obo_new( conf ) # obtain an OBO index interface object.
 #'
 #' @export
 #' @importFrom rJava .jinit .jnew
-make_obo_conf <- function() {
+obo_mkconf <- function( ... ) {
+    args <- list( ... )
     .jinit()
-    return( .jnew( paste( NS, 'OBOConf', sep = '/' ) ) )
+    conf <- .jnew( CONF_CLZ )
+    for( param in names( args ) ) {
+        conf$set( param, args[[param]] )
+    }
+    return( conf )
 }
 
 #' Create OBO interface object.
@@ -48,18 +55,15 @@ make_obo_conf <- function() {
 #'
 #' All index access functions require an OBO interface object as first parameter.
 #'
-#' @param conf An OBOConf instance, e.g. the value of \code{\link{make_obo_conf}}.
+#' @param conf An OBOConf instance, e.g. the value of \code{\link{obo_mkconf}}.
 #'
 #' @return An OBO index interface object.
 #'
 #' @export
-#' @importFrom rJava .jinit .jnew %instanceof%
-make_obo <- function( home = getwd(), conf = make_obo_conf() ) {
+#' @importFrom rJava .jinit .jnew
+obo_new <- function( ..., conf=obo_mkconf( ... ) ) {
     .jinit()
-    if( !conf %instanceof% paste( NS, 'OBOConf', sep = "/" ) ) {
-        stop( 'conf is not an OBOConf instance' )
-    }
-    conf$set( 'homeDir', path.expand( home ) )
+    chk_clz( conf, CONF_CLZ )
     return( .jnew( OBO_CLZ, conf ) )
 }
 
@@ -79,9 +83,9 @@ make_obo <- function( home = getwd(), conf = make_obo_conf() ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J
-corpus_rebuild <- function( obo, reload = TRUE, ... ) {
+obo_rebuild_corpus <- function( obo, reload=TRUE, ... ) {
     .jinit()
-    if( !obo %instanceof% OBO_CLZ ) stop( 'Object is not an OBOMain instance' )
+    chk_clz( obo, OBO_CLZ )
     J( obo, 'rebuildCorpus' )
     if( reload ) {
         load_corpus( obo$conf$dataDir()$toString(), ... )
@@ -95,7 +99,7 @@ corpus_rebuild <- function( obo, reload = TRUE, ... ) {
 #'
 #' If the given vector's length is greater than one, the filter will be constructed as the union of
 #' all individual terms. If it is equal to one, it will be interpreted as a regular expression. If
-#' its 0, the returned document set will have 0 documents.
+#' its 0, the returned document set will be the empty set.
 #'
 #' @param obo   An OBO interface object.
 #' @param field A field over which to construct a document set.
@@ -104,10 +108,10 @@ corpus_rebuild <- function( obo, reload = TRUE, ... ) {
 #' @return A DocSet instance that can be used to select observations from a corpus.
 #'
 #' @export
-#' @importFrom rJava J .jinit .jarray %instanceof%
-make_doc_set <- function( obo, field, terms ) {
+#' @importFrom rJava .jinit J .jarray
+obo_mkdocset <- function( obo, field, terms ) {
     .jinit()
-    if( !obo %instanceof% OBO_CLZ ) stop( 'Object is not an OBOMain instance' )
+    chk_clz( obo, OBO_CLZ )
     if( length( field ) == 0 ) stop( 'empty field given' )
     if( length( field ) > 1 ) {
         warning( sprintf( 'multiple field names given for doc set. using %s', field[1] ) )
@@ -125,7 +129,7 @@ make_doc_set <- function( obo, field, terms ) {
 #' all documents in the given document set.
 #'
 #' @param obo   An OBO interface object.
-#' @param ds    A DocSet, built from \code{\link{make_doc_set}}.
+#' @param ds    A DocSet, built from \code{\link{obo_mkdocset}}.
 #'
 #' @return A sparse matrix containing cooccurrence counts for all terms in the given field in the
 #' given sample of documents.
@@ -133,15 +137,17 @@ make_doc_set <- function( obo, field, terms ) {
 #' @export
 #' @importFrom Matrix sparseMatrix rowSums colSums
 #' @importFrom rJava .jinit
-get_cooccurrences <- function( obo, lxcn = lexicon( obo ), ds = obo$docSample(), shrink = TRUE ) {
+obo_count_cooc <- function( obo, lxcn=obo_lexicon( obo ), ds=obo$docSample(), shrink=TRUE ) {
     .jinit()
+    chk_clz( obo, OBO_CLZ )
+    obo$conf()$set( 'quiet', 'true' )
     cooc <- obo$countCooccurrences( ds )
     ar <- cooc$arrays()
-    m <- sparseMatrix( i = ar$i + 1, j = ar$j + 1, x = ar$x )
+    m <- sparseMatrix( i=( ar$i + 1 ), j=( ar$j + 1 ), x=ar$x )
     rownames( m ) <- rownames( lxcn )[ 1:nrow( m ) ]
     colnames( m ) <- rownames( lxcn )[ 1:ncol( m ) ]
     if( shrink ) m <- m[ rowSums( m ) > 0, colSums( m ) > 0 ]
-    return( sparseMatrix( i = m$i + 1, j = m$j + 1, x = m$x ) )
+    return( m )
 }
 
 #' Get all fields contained in the index.
@@ -156,11 +162,11 @@ get_cooccurrences <- function( obo, lxcn = lexicon( obo ), ds = obo$docSample(),
 #' @return A character vector with the names of all fields present in the index.
 #'
 #' @export
-#' @importFrom rJava .jinit J %instanceof%
-index_fields <- function( obo ) {
+#' @importFrom rJava .jinit J
+obo_get_fields <- function( obo ) {
     .jinit()
-    if( !obo %instanceof% OBO_CLZ ) stop( 'Object is not an OBOMain instance' )
-    return( J( paste( NS, 'util', 'RHelper', sep ='/'), 'fields', obo$indexReader() ) )
+    chk_clz( obo, OBO_CLZ )
+    return( J( RHLP_CLZ, 'fields', obo$indexReader() ) )
 }
 
 #' Get all terms in the given field.
@@ -168,22 +174,29 @@ index_fields <- function( obo ) {
 #' Obtains a character vector with all the terms found in the given field.
 #'
 #' Elements of the returned vector may be used to construct document sets over the same field
-#' using \code{\link{make_doc_set}}.
+#' using \code{\link{obo_mkdocset}}.
 #'
 #' @param obo   An OBO interface object.
-#' @param field A field name, e.g. an element of \code{\link{get_index_fields}}.
+#' @param field A field name, e.g. an element of \code{\link{obo_get_fields}}.
 #'
 #' @return A character vector containing all the terms found in the given field.
 #'
 #' @export
-#' @importFrom rJava .jinit J %instanceof%
-index_field_terms <- function( obo, field ) {
+#' @importFrom rJava .jinit J
+obo_get_terms <- function( obo, field ) {
     .jinit()
-    if( !obo %instanceof% OBO_CLZ ) stop( 'Object is not an OBOMain instance' )
+    chk_clz( obo, OBO_CLZ )
     if( length( field ) > 1 ) {
         warning( sprintf( 'multiple field names given for doc set. using %s', field[1] ) )
     }
-    return( J( paste( NS, 'util', 'RHelper', sep ='/'), 'terms', obo$indexReader(), field[1] ) )
+    return( J( RHLP_CLZ, 'terms', obo$indexReader(), field[1] ) )
+}
+
+#' @importFrom rJava %instanceof%
+chk_clz <- function( obj, clz ) {
+    if( !obj %instanceof% clz ) {
+        stop( 'Object is not an instance of ' %.% clz )
+    }
 }
 
 #' Get a copy of the lexicon.
@@ -191,10 +204,30 @@ index_field_terms <- function( obo, field ) {
 #' @return A lexicon data frame, with terms as row names and tf and df as columns.
 #' @export
 #' @importFrom rJava .jinit
-lexicon <- function( obo ) {
+obo_lexicon <- function( obo ) {
     .jinit()
     ar = obo$lexicon()$arrays()
-    lxcn <- data.frame( tf = ar$tf, df = ar$df )
-    rownames( lxcn ) <- ar$keys
+    lxcn <- data.frame( row.names=ar$terms )
+    lxcn[['tf']] <- ar$tf
+    lxcn[['df']] <- ar$df
     return( lxcn )
 }
+
+#' Get all defined POS classes in the OBO corpus.
+#' @return Character vector containing all POS class names in OBO.
+#' @export
+#' @importFrom rJava .jinit J
+obo_all_pos <- function() {
+    .jinit()
+    return( J( RHLP_CLZ, 'posClasses' ) )
+}
+
+#' Get lexical POS classes in the OBO corpus.
+#' @return Character vector containing lexical POS class names in OBO.
+#' @export
+#' @importFrom rJava .jinit J
+obo_lex_pos <- function() {
+    .jinit()
+    return( J( RHLP_CLZ, 'lexClasses' ) )
+}
+

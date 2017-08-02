@@ -14,192 +14,139 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-####################################################################################################
-#### Various utility functions for common data manipulation tasks.                              ####
-####################################################################################################
+# Utility functions for common data manipulation tasks.
 
-# cooc_to_ppmi -------------------------------------------------------------------------------------
-#' (Positive) Pointwise mutual information.
+#' Generate rank classes with equal size.
 #'
-#' Compute a (P)PMI matrix from raw frequency counts, stored as a column-oriented sparse matrix.
+#' Generates classes of approximately equal size over intervals of the rankings in x. i.e. splits
+#' the vector of ranks in x in classes s.t. each class has similar size.
 #'
-#' The PMI value for each cell is equal to log( p(i,j) / p(i)p(j) ), i.e. the log of the observed
-#' probability over the expected probability.
+#' @param x       A sortable vector.
+#' @param k       The desired number of classes.
+#' @param factor  If false, return a numerci vector instead of a factor.
+#' @param labels  A vector of length k or a function to be applied over 1:k to be used as factor
+#'                labels. Ignored if factor==FALSE
+#' @param desc    Logical. Sort in descending order. TRUE by default.
+#' @param no.sort Logical. Don't sort x, for cases in which x is already sorted (or results will
+#'                be wrong).
 #'
-#' The PPMI variant adds 1 to this value in order to truncate all values to 0 and maintain
-#' sparsity.
-#'
-#' If rs or cs are given, the computation of the expected probabilities will use the values
-#' contained in these vectors. This allows computing correct PMI values for partial cooccurrence
-#' matrices, e.g. those built over a subsample of the entire corpus. If no marginal vectors are
-#' given, these are computed from the row sums and column sums of the cooccurrence matrix,
-#' respectively; this is equivalent to computing an 'empirical' PMI value from the given set of
-#' observations, instead of computing it using the global corpus statistics.
-#'
-#' The computation of observed probabilities is obviously always based on the total number of
-#' observations in the given cooccurrence matrix, independently of the marginal vectors used for
-#' the expected probabilities.
-#'
-#' WARNING: In order to prevent a memory explosion, zero-values in the input matrix \emph{are never
-#' calculated}, which has the numerical side-effect of replacing all -Inf values for the plain PMI
-#' version with zeros. I have not yet thought of a better solution to distinguish -Infs from
-#' actual 0s in the computed result.
-#'
-#' @param m     A colun-oriented sparse matrix containing cooccurrence counts.
-#' @param rs    A numeric vector for row marginals (i.e. total DF for each term).
-#' @param cs    A numeric vector for column marginals (i.e. total TF for each corpus segment).
-#' @param ppmi  A logical value indicating whether negative values should be truncated to 0 (i.e.
-#'              compute PPMI instead of PMI). TRUE by default.
-#' @param ow    A logical value indicating wether the result should be destructively copied over
-#'              the input matrix. FALSE by default.
-#'
-#' @return An (column-stored sparse) matrix, isomorphic to m_ with the (P)PMI values for m_.
-#'         If ow == TRUE, m_ is replaced with this value.
-#' @export
-#' @importFrom Matrix rowSums colSums
-# --------------------------------------------------------------------------------------------------
-cooc_to_pmi <- function( m, rs = rowSums( m ), cs = colSums( m ), ppmi = TRUE, ow = FALSE ) {
-    return( spm_pmi( m, rs, cs, ppmi, ow ) )
-}
-
-# make_codes ---------------------------------------------------------------------------------------
-#' Build factor levels from combinations of variables.
-#'
-#' Constructs factor levels by assigning a value to combinations of columns. If mode is 'max', then
-#' the columns will be treated as numeric and the associated factor level wiull be equal to the
-#' name of the column contanining the maximum among the selected columns for each row. If mode is
-#' 'comb', factor levels are constructed by assigning a character value to the concatenation of
-#' values contained in the selected columns, optionally reduced to flags s.t. x = x > 0 if
-#' flags==TRUE.
-#'
-#' @param d      A data frame.
-#' @param ...    Arguments passed to \code{\link{dplyr::select}} to choose columns to compute
-#'               levels on.
-#' @param flags  Reduce values to booleans x = x > 0. Ignored if mode is not 'comb'. This will
-#'               dramatically reduce the number of levels in the resulting factor. Default TRUE.
-#' @param toint  Convert factors to integer values. Only makes sense when flags is TRUE, in which
-#'               case the concatenation of logical values for x > 0 is interpreted as a binary
-#'               integer.
-#' @param target Character value indicating the name of the output factor. Default: 'code'
-#' @param mode   One of 'max' or 'comb'. If 'max', value is equal to the row maximum for the
-#'               selected columns. If 'comb', value is equal to the combination of all values in
-#'               the selected column.
-#' @param drop   Logical. If TRUE, \code{\link{droplevels}} is called on the factor before return.
-#' @param ties   Function or NA. Function to break ties between max values. Ignored if mode is
-#'               not 'max'.
-#' @return a data frame with an extra variable containing a factor with the generated levels.
+#' @return A vector of length equal to k with the class for each x.
 #'
 #' @export
-# --------------------------------------------------------------------------------------------------
-make_codes <- function(
-    d, ..., flags=TRUE, toint=TRUE, target='code', mode=c( 'max', 'comb' ), drop=TRUE, ties=NA
-) {
-    codify <- switch( match.arg( mode ),
-        max  = function( x ) find_max( x, ties=ties ),
-        comb = function( x ) ints_to_str( x, flags=flags, sep='' )
+class_rank <- function( x, k=100, factor=TRUE, labels=NA, desc=TRUE, no.sort=FALSE ) {
+    x <- if( !no.sort ) x[ srt <- order( x, decreasing=desc ) ] else x
+    clz <- mk_class(
+        1:length( x ),
+        seq( 0, length( x ), length( x ) / k ),
+        factor=factor, labels=labels
     )
-    tmp <- dplyr::select_( d, .dots=lazyeval::lazy_dots( ... ) )
-    if( !all( apply( tmp, 2, is.real ) ) & mode == max ) {
-        stop( "Selected variables must be numeric or integer for max codes" )
-    }
-    d$codes_ <- apply( tmp, 1, codify( x ) )
-    if( flags & toint ) d <- dplyr::mutate( d, codes_ = strtoi( codes_, base = 2 ) )
-    lvls <- unique( d$codes_ )[ order( unique( d$codes_ ) ) ]
-    d <- dplyr::mutate( d, codes_ = factor( codes_, levels=lvls ) )
-    if( drop ) d <- dplyr::mutate( d, codes_ = droplevels( codes_ ) )
-    dots_ <- list( 'codes_' ) %>% setattr( 'names', target )
-    d %>% dplyr::rename_( .dots=dots_ )
-
-    return( d )
+    return( clz[ order( srt ) ] )
 }
 
-# ints_to_str---------------------------------------------------------------------------------------
-#' Paste a series of integer values into a character value.
+#' Generate classes with equal mass.
 #'
-#' This function takes an integer vector as input and produces a string value equal to the
-#' concatenation of the given vector, with the given separator added in between, and optionally
-#' interpreting the given integer values as if they were boolean flags
-#' \code{using as.integer( x > 0 )}.
+#' Generates classes from a vector of masses (frequencies) s.t. that each generated class has
+#' equivalent mass (and most likely very different sizes).
 #'
-#' @param x     An integer vector
-#' @param flags Logical. Convert values prior to concatenation by \code{as.integer( x > 0 )}.
-#' @param sep   A character expresion tO use as separator between intger values. Empty by default.
+#' @param x      A vector of massese or frequencies.
+#' @param k      The desired number of classes.
+#' @param factor If false, return a numerci vector instead of a factor.
+#' @param labels A vector of length k or a function to be applied over 1:k to be used as factor
+#'               labels. Ignored if factor==FALSE.
+#' @param log    Logical. Compute mass using log1p( x ) instead of x.
+#' @param sort   Logical. Sort x before calculating mass and class; ensures members in each class
+#'               have individual masses in the same order of magnitude.
 #'
-#' @return a character value containing the concatenation of x, optionally recoded as 0 and 1 and
-#'         with the given separator in between values, if given.
+#' @return A vector of length equal to k with the class for each x.
 #'
 #' @export
-# --------------------------------------------------------------------------------------------------
-ints_to_str <- function( x, flags=TRUE, sep='' ) {
-    if( flags ) x <- as.integer( x > 0 )
-    out <- if( all( !is.na( x ) ) ) paste( x, collapse=sep ) else NA
-    return( out )
+class_mass <- function( x, k=100, factor=TRUE, labels=NA, log=FALSE, sort=TRUE, desc=TRUE ) {
+    x <- if( sort ) x[ srt <- order( x, decreasing=desc ) ]
+    x <- if( log ) cumsum( log1p( x ) ) else cumsum( x )
+    clz <- mk_class(
+        x,
+        seq( 0, ( sup <- x[length( x )] ), sup / k ),
+        factor=factor, labels=labels
+    )
+    return( if( exists( 'srt' ) ) clz[ order( srt ) ] else clz )
 }
 
-# str_normalize ------------------------------------------------------------------------------------
-#' Normalize strings.
+#' Wrapper for cut.
 #'
-#' This function offers a consistent procedure for string normalization combining several common
-#' operations into one call.
+#' Wrapper for cut( x, k ) that accepts vectors or a generator function for labels, and optionally
+#' returns a numeric vector instead of a factor.
 #'
-#' @param x     A string (i.e. a character vector of length 1).
-#' @param trim  Logical. Remove trailing and leading whitespace.
-#' @param lower Logical. Reduce everything to lower case.
-#' @param white Logical. Eliminate duplicate whitespace.
-#' @param nl    Loigcal. Replace newlines with spaces.
-#' @param punct Logicel. Remove punctuation.
-#' @param word  Logical. Remove non-word characters.
+#' @param x      Passed to cut as 'x'
+#' @param k      Passed to cut as 'breaks'
+#' @param factor Logical. Coerce to numeric if FALSE.
+#' @param labels A vector of length equal to \code{length( k ) + 1} or a function to generate a
+#'               vector of length \code{length( k ) + 1} from \code{1:lenght( k )} used as factor
+#'               labels. Ignored if factor is FALSE.
+#' @return A vector of length equal to \code{length( x )} with the interval in k for each value of x
 #'
-#' @return a reasonably normalized string.
-#'
-#' @examples
-#' \code{
-#' x <- "some Ugly    dirty\nstring!"
-#' cat( x )
-#' cat( normalizeString( x ) )
-#' }
-# --------------------------------------------------------------------------------------------------
-str_normalize <- function( x, trim=TRUE, lower=TRUE, white=TRUE, nl=FALSE, punct = FALSE ) {
-    if( !any( trim, lower, white, nl, punct ) ) return( x ) # All flags are false, nothing to do.
-    if( lower ) x <- tolower( x )
-    if( trim  ) x <- gsub( '^\\s+(.*?)\\s+$', '\\1', x, perl = TRUE )
-    if( white ) x <- gsub( '\\s+', ' ', x )
-    if( nl    ) x <- gsub( '\\n+', ' ', x )
-    if( punct ) x <- gsub( '[[:punct:]]', '', x )
-    if( word )  x <- gsub( '\\W+', '', x, perl = TRUE )
-    return( x )
+mk_class <- function( x, k, factor=TRUE, labels=NA ) {
+    lbls <- NULL
+    if( factor && !is.na( labels ) ) {
+        if( is.vector( labels ) && ( length( labels ) == length( k ) - 1 ) ) lbls = labels
+        else if( is.function( labels ) ) lbls = labels( 1:( k - 1 ) )
+        else warning( 'Given labels is not function or has incorrect length.' )
+    }
+    clz <- cut( x, k, labels=lbls )
+    if( !factor ) clz <- as.numeric( clz )
+    return( clz )
 }
 
-# random_spm ---------------------------------------------------------------------------------------
 #' Create random sparse matrix.
 #'
-#' Creates a random sparse matrix with the given dimension, fill rate and value function.
+#' Creates a random sparse matrix with the given dimensions, fill rate, value function and
+#' (if given) respecting the given marginal distributions. Useful for bootstrapping tests for
+#' sparse matrices.
 #'
-#' @param rows Integer vector of length 1. Number of rows.
-#' @param cols Integer vector of length 1. Number of cols.
-#' @param p    Numeric vector of length 1. 0 < p < 1; fill rate.
-#' @param v    Numeric vector of length 1 or suplier function for values.
+#' @param rows    Number of rows.
+#' @param cols    Number of columns.
+#' @param p       Numeric s.t. 0 < p < 1; fill rate (= probability of non-zero value)
+#' @param v       Numeric vector of length 1 or suplier function for values. Ignored if row and col
+#'                marginals are given.
+#' @param row.mrg Numeric vector of length equal to rows with row marginals for computed matrices.
+#'                If given, col.mrg must be given too.
+#' @param col.mrg Numeric vector of length equal to cols with col marginals for computed matrices.
+#'                If given, row.mrg must be given too.
+#'
+#' @return A Matrix::sparseMatrix.
 #'
 #' @export
-#' @importFrom Matrix Matrix
-# --------------------------------------------------------------------------------------------------
-random_spm <- function( rows = 100, cols = 100, p = 0.1, v = function() 1 ) {
-    v <- if( !is.function( v ) ) function() v else v
-    d <- sample( rbinom( rows*cols, 1, p ), rows*cols, TRUE )
-    d <- d * v();
-    m <- matrix( d, rows, cols, byrow = TRUE )
-    return( Matrix( m, sparse=T ) )
+#' @importFrom Matrix sparseMatrix
+random_spm <- function( rows=100, cols=100, p=0.1, v=function() 1, row.mrg=NULL, col.mrg=NULL ) {
+    # stop( 'not implemented yet' )
+    # if( xor( is.null( row.mrg ), is.null( col.mrg ) ) ) {
+    #     stop( 'Both margins needed when giving marginal values' )
+    # }
+    # v <- if( !is.null( row.mrg ) && !is.null( col.mrg ) ) {
+    #     if( !is.vector( row.mrg, mode='numeric' ) || !is.vector( col.mrg, mode='numeric' ) ) {
+    #         stop( 'marginals must be numeric vectors' )
+    #     }
+    #     if( length( row.mrg ) != rows || length( col.mrg ) != cols ) {
+    #         stop( 'wrong dimensions for marginal vectors' )
+    #     }
+    #     function( i, j ) row.mrg[i] * col.mrg[j]
+    # } else if( !is.function( v ) ) {
+    #     function( i, j ) v
+    # } else v
+    v <- function( i, j ) 1
+    nzs <- which( sample( rbinom( rows*cols, 1, p ), rows*cols, TRUE ) != 0 )
+    i <- vector( 'integer', length=length( nzs ) )
+    j <- vector( 'integer', length=length( nzs ) )
+    x <- vector( 'numeric', length=length( nzs ) )
+    for( nz in 1:length( nzs ) ) {
+        i[nz] <- ( nz %/% rows ) + 1
+        j[nz] <- ( nz %% rows ) + 1
+        x[nz] <- v( i[nz], j[nz] )
+    }
+    browser()
+    return( Matrix::sparseMatrix( i=i, j=j, x=x ) )
 }
 
-find_max <- function( x, ties=NA ) {
-    i = which( x == max( x ) )
-    i = ifelse( length( i ) > 1, ties, i )
-    ifelse( is.null( names( x ) ), i, names( x )[i] )
-}
-
+#' wrapper for ( is.numeric( x ) || is.integer( x ) )
 is.real <- function( x ) {
     is.numeric( x ) || is.integer( x )
 }
-
-#' @export
-"%.%" <- function( ... ) paste( ..., sep ='' )

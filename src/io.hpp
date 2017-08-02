@@ -27,4 +27,4 @@ extern "C" {
 Rcpp::S4 dgTMatrix( Rcpp::IntegerVector i, Rcpp::IntegerVector j, Rcpp::NumericVector x );
 Rcpp::S4 dgCMatrix( Rcpp::IntegerVector i, Rcpp::IntegerVector p, Rcpp::NumericVector x );
 
-#endif // SPARSE_MATRIX_H_
+#endif // IOTOOLS_

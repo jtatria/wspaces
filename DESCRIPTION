@@ -12,8 +12,10 @@ LazyData: true
 Imports:
     Rcpp (>= 0.12.11),
     Matrix,
+    magrittr,
     data.table,
-    rJava
+    rJava,
+    igraph
 LinkingTo:
     Rcpp,
     RcppEigen

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 José Tomás Atria <jtatria at gmail.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <iostream>
 #include <stdio.h>
 #include "io.hpp"
@@ -6,7 +23,7 @@ using namespace Rcpp;
 
 //' Load sparse matrices from disk.
 //'
-//' Reads a sparse matrix from binary file containing a sequence of (long, long, double) triplets.
+//' Reads a sparse matrix from a binary file containing a sequence of (long, long, double) triplets.
 //'
 //' This function uses a memory mapped file to read the given binary file as an array of triplets
 //' containing the coordinates and values for non-zero entries in a sparse matrix. This format is
@@ -24,7 +41,6 @@ S4 load_spm( std::string file ) {
   double* x = spm->entries;
   int*    i = spm->row_indices;
   int*    j = spm->col_indices;
-  S4 out("dgTMatrix");
   IntegerVector iv( i, i + spm->entry_count );
   IntegerVector jv( j, j + spm->entry_count );
   NumericVector xv( x, x + spm->entry_count );

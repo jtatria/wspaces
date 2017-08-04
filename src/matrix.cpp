@@ -17,8 +17,9 @@
 
 //////////////////////////////// Matrix manipulation tools /////////////////////////////////////////
 
-#include <math.h>
 #include <stdio.h>
+#include <math.h>
+
 #include "matrix.hpp"
 #include "tfidf.hpp"
 
@@ -76,7 +77,7 @@ S4 cooc_to_pmi( S4 m_, NumericVector rs_, NumericVector cs_, bool ppmi = true, b
         Rcpp::stop( "Wrong dimensions for col marginal vector" );
     }
     if( rs.sum() - 1 > EPSILON || cs.sum() - 1 > EPSILON ) {
-        Rcpp::stop( "Marginals don't look like probability disributions" );
+        Rcpp::warning( "Marginals don't look like probability disributions" );
     }
     double N  = src.sum();
     SpMat tgt = ow ? src : as<MSpMat>( clone( m_ ) );
@@ -84,11 +85,9 @@ S4 cooc_to_pmi( S4 m_, NumericVector rs_, NumericVector cs_, bool ppmi = true, b
         for( SpMat::InnerIterator srcIt( src, i ), tgtIt( tgt, i ); srcIt; ++srcIt, ++tgtIt ) {
             int r = srcIt.row();
             int c = srcIt.col();
-            // Compiler abuse to facilitate debuging. These should all be optimized out.
             double obs = ( srcIt.value() / N );
             double exp = rs[r] * cs[c];
-            double rat = obs / exp;
-            double v   = std::log<double>( rat + ( ppmi ? 1 : 0 ) ).real();
+            double v   = std::log<double>( ( obs / exp ) + ( ppmi ? 1 : 0 ) ).real();
             tgtIt.valueRef() = v;
         }
     }
@@ -262,11 +261,3 @@ NumericMatrix vector_cosine( NumericMatrix m_, bool transpose = false ) {
     }
     return wrap( out );
 }
-
-/*** R
-    m <- matrix( c( 1,1,1,1,2,0,0,2,1,0,0,3 ), nrow = 6, byrow = TRUE )
-    rownames( m ) <- c( "this", "is", "a", "another", "sample", "example" )
-    m
-    df <- rowSums( ( m > 0 ) * 1 )
-    tfidf_weight( m, df )
-*/

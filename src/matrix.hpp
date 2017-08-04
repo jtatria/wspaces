@@ -1,3 +1,4 @@
+// [[Rcpp::depends(RcppEigen)]]
 #include <RcppEigen.h>
 
 #ifndef MATRIX_

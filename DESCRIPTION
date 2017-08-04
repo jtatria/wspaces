@@ -11,6 +11,7 @@ Encoding: UTF-8
 LazyData: true
 Imports:
     Rcpp (>= 0.12.11),
+    RcppParallel,
     Matrix,
     magrittr,
     data.table,
@@ -18,6 +19,7 @@ Imports:
     igraph
 LinkingTo:
     Rcpp,
-    RcppEigen
+    RcppEigen,
+    RcppParallel
 RoxygenNote: 6.0.1
-SystemRequirements: C++11, Java
+SystemRequirements: C++11, Java, GNU make

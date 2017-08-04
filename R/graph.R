@@ -77,24 +77,6 @@ graph_prune_connected <- function(
     return( out )
 }
 
-bins_prog <- function( head, tail, pivot, range, lab ) {
-    w = 60
-    lo <- ( ( ( 0     + head  ) / range ) * w ) %>% floor
-    s1 <- ( ( ( pivot - head  ) / range ) * w ) %>% floor
-    s2 <- ( ( ( tail  - pivot ) / range ) * w ) %>% floor
-    hi <- ( ( ( range - tail  ) / range ) * w ) %>% floor
-    message( sprintf( "[%s]: |%61s|",
-        lab,
-        paste( c(
-            rep( ' ', lo ),
-            rep( '-', s1 ),
-            "|",
-            rep( '-', s2 ),
-            rep( ' ', hi )
-        ), collapse='' )
-    ) )
-}
-
 #' Determine graph connectivity up to the given tolerance
 #'
 #' This function will return true if the maximum component size of all components detached from the
@@ -120,32 +102,30 @@ graph_connected <- function( g, tol = 1 ) {
     }
 }
 
-#' Scale edge attribute according to community structure.
-#' 
-#' Scales the given edge attribute by the given intra and inter community factors depending on 
-#' whether the edges cross community boundaries or not.
-#' 
-#' @param edges  Edges in matrix form
-#' @param mem    Vector of vertex membership
-#' @param intraw Numeric factor for intra-community edges. Defaults to 1.
-#' @param interw Numeric factor for inter-community edges. Defaults to 0.1 * intraw.
-#' @param attr   Attribute scale. Defaults to 'weight'
-#' 
-#' @return A vector of scaled attributes attribute * intraw for edges in which the membership of 
-#'         source and target is the same and attribute * interw if not.
-#'         
-#' @export
-graph_comm_weight <- function( g, mem, intraw=1, interw=intraw*.1, attr='weight' ) {
-    chk_igraph( g )
-    w <- edge_attr( g, attr )
-    edges <- get.edgelist( g )
-    out <- vapply( 1:nrow( edges ), function( i ) {
-        if( edge_crosses( edges[i,], mem ) ) {
-            w[i] * interw
-        } else {
-            w[i] * intraw
-        }
-    }, 1.0 )
+#'
+v2c_contrib <- function( comm, g, v=V( g ), attr='weight', num_func=sum, den_func=sum ) {
+    chk_comm( comm )
+    intra <- !crossing( comm, g )
+    out <- vapply( v, function( v ) {
+        inc <- ( E( g ) %in% incident( g, v ) )
+        num <- edge_attr( g, attr )[ ( inc & intra ) ] %>% num_func
+        den <- edge_attr( g, attr )[ inc ] %>% den_func
+        return( num / den )
+    }, numeric( 1 ) )
+    return( out )
+}
+
+#'
+c2v_contrib <- function( comm, g, v=V( g ), attr='weigth', num_func=sum, den_func=sum ) {
+    chk_comm( comm )
+    intra <- !crossing( comm, g )
+    memb <- membership( comm )
+    out <- vapply( v, function( v ){
+        inc <- ( E( g ) %in% incident( g, v ) )
+        num <- edge_attr( g, attr )[ intra & inc ] %>% num_func
+        den <- edge_attr( g, attr )[ E( g )[ inc( V( g )[ memb == v ] ) ] ] %>% den_func
+        return( num / den )
+    }, numeric( 1 ) )
     return( out )
 }
 
@@ -153,6 +133,12 @@ graph_comm_weight <- function( g, mem, intraw=1, interw=intraw*.1, attr='weight'
 chk_igraph <- function( g ) {
     if( !igraph::is.igraph( g ) ) {
         stop( 'g is not an igraph graph!' )
+    }
+}
+
+chk_comm <- function( comm ) {
+    if( !'communities' %in% class( comm ) ) {
+        stop( 'comm is not a communities object!' )
     }
 }
 
@@ -171,24 +157,4 @@ bins_prog <- function( head, tail, pivot, range, lab, w=60 ) {
             rep( ' ', hi )
         ), collapse='' )
     ) )
-}
-
-cointet_loop <- function( m ) {
-    out <- matrix( nrow=nrow( m ), ncol=ncol( m ) )
-    for( i in 1:nrow( m ) ) {
-        for( j  in 1:nrow( m ) ) {
-            if( i != j ) {
-                out[i,j] <- cointet_inner( m, i, j )
-            }
-        }
-    }
-    return( out )
-}
-
-cointet_inner <- function( m, w1, w2 ) {
-    w1 <- if( is.character( w1 ) ) which( rownames( m ) == w1 ) else w1
-    w2 <- if( is.character( w2 ) ) which( rownames( m ) == w2 ) else w2
-    num <- sum( pmin( m[ w1, ][ -c( w1, w2 ) ], m[ w2, ][ -c( w1, w2 ) ] ) )
-    den <- sum( m[ w1, ][ -c( w1, w2 ) ] )
-    return( num / den )
 }

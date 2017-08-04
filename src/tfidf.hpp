@@ -16,10 +16,10 @@
 */
 
 // [[Rcpp::depends(RcppEigen)]]
-#include "matrix.hpp"
-
 #ifndef TFIDF_
 #define TFIDF_ 1
+
+#include "matrix.hpp"
 
 const int TF_BOOLEAN = 0;
 const int TF_RAW     = 1;

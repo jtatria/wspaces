@@ -4,4 +4,5 @@ PKG_LIBS += -L /home/jta/src/local/sparse-matrix -lspm
 PKG_LIBS += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
 ## With R 3.1.0 or later, you can uncomment the following line to tell R to
 ## enable compilation with C++11 (or even C++14) where available
+PKG_CPPFLAGS = -I../inst/include/
 CXX_STD = CXX11

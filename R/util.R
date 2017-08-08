@@ -146,6 +146,36 @@ random_spm <- function( rows=100, cols=100, p=0.1, v=function() 1, row.mrg=NULL,
     return( Matrix::sparseMatrix( i=i, j=j, x=x ) )
 }
 
+#' Ratio between sets.
+#' 
+#' Computes a ratio of the given aggregation function over the elements of the given vector for 
+#' members of the given numerator set and the elements of the given vector for the given denominator
+#' set.
+#' 
+#' @param x    A vector from where to select inputs to the given aggregation function.
+#' @param nset A vector representing a subset of x over which to apply the given function for the 
+#'             numerator value.
+#' @param dset A vector representing a subset of x over which to apply the given function for the
+#'             denominator value.
+#' @param func An aggregation function like sum or length. Degfaults to length.
+#' 
+#' @return A scalar value equal to the value of the given function applied to the elements of nset 
+#'         over the value of the given funciton applied to the elements of dset.
+#'
+#' @export
+#' @importFrom magrittr %>%
+set_ratio <- function( x, nset, dset, func=length ) {
+    if( is.logical( nset ) && length( nset ) != length( x ) )
+        warning( "Recycling short logical vector for nset" )
+    if( is.logical( dset ) && length( dset ) != length( x ) )
+        warning( "Recycling short logical vector for dset" )
+    if( is.integer( nset ) && max( nset ) > length( x ) )
+        stop( 'Invalid index vector for nset (max nset oob)' )
+    if( is.integer( dset ) && max( dset ) > length( x ) )
+        stop( 'Invalid index vector for dset (max nset oob)' )
+    return( ( x[ nset ] %>% func ) / ( x[ dset ] %>% func ) )
+}
+
 #' wrapper for ( is.numeric( x ) || is.integer( x ) )
 is.real <- function( x ) {
     is.numeric( x ) || is.integer( x )

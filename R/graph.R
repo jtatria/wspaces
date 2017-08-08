@@ -102,28 +102,62 @@ graph_connected <- function( g, tol = 1 ) {
     }
 }
 
+#' Weight of ego's internal incident edges over all of its incident edges.
 #'
-v2c_contrib <- function( comm, g, v=V( g ), attr='weight', num_func=sum, den_func=sum ) {
-    chk_comm( comm )
+#' Computes the ratio between ego's non-community crossing incident edges and all of its incident
+#' edges. This measure is also known as ego's community's "contribution" to ego's neighbourhood.
+#'
+#' This can be interpreted as the 'weight' of ego's community on its inmediate neighbourhood.
+#'
+#' @param comm A communities object. The result of a cluster-finding function on g.
+#' @param g The graph.
+#' @param v A vector of vertices in g. Defualts to all vertices in g.
+#' @param attr An edge attribute to sum over the two sets. Set to NA to use cardinalities instead.
+#' @param aggr A function to combine values for the two sets. Defaults to sum.
+comm_vertex_weight <- function( comm, g, v=V( g ), attr='weight', aggr=sum ) {
+    chk_igraph( g ); chk_comm( comm )
     intra <- !crossing( comm, g )
     out <- vapply( v, function( v ) {
-        inc <- ( E( g ) %in% incident( g, v ) )
-        num <- edge_attr( g, attr )[ ( inc & intra ) ] %>% num_func
-        den <- edge_attr( g, attr )[ inc ] %>% den_func
-        return( num / den )
+        # ego's intra-cluster incident edges
+        nset <- ( ( E( g ) %in% incident( g, v ) ) & intra )
+        # all of ego's incident edges
+        dset <- ( ( E( g ) %in% incident( g, v ) ) )
+        # edge attribute or edges themselves
+        evec <- if( is.na( attr ) ) E( g ) else edge_attr( g, attr )
+        # sum attribute or count edges.
+        agrf <- if( is.na( attr ) ) length else sum
+        return( set_ratio( evec, nset, dset, agrf ) )
     }, numeric( 1 ) )
     return( out )
 }
 
+#' Weight of ego's internal incident edges over all internal edges.
 #'
-c2v_contrib <- function( comm, g, v=V( g ), attr='weigth', num_func=sum, den_func=sum ) {
-    chk_comm( comm )
+#' Computes the ratio between ego's non-community crossing incident edges and all of its community's
+#' internal edges. This measure is also known as ego's neighbourhood's "contribution" to its 
+#' community.
+#'
+#' This can be interpreted as the 'weight' of ego's inmediate neighbourhood on its community.
+#'
+#' @param comm A communities object. The result of a cluster-finding function on g.
+#' @param g The graph.
+#' @param v A vector of vertices in g. Defualts to all vertices in g.
+#' @param attr An edge attribute to sum over the two sets. Set to NA to use cardinalities instead.
+#' @param aggr A function to combine values for the two sets. Defaults to sum.
+vertex_comm_weight <- function( comm, g, v=V( g ), attr='weigth', aggr=sum ) {
+    chk_igraph( g ); chk_comm( comm )
     intra <- !crossing( comm, g )
     memb <- membership( comm )
     out <- vapply( v, function( v ){
-        inc <- ( E( g ) %in% incident( g, v ) )
-        num <- edge_attr( g, attr )[ intra & inc ] %>% num_func
-        den <- edge_attr( g, attr )[ E( g )[ inc( V( g )[ memb == v ] ) ] ] %>% den_func
+        # ego's intra-cluster incident edges
+        nset <- ( ( E( g ) %in% incident( g, v ) ) & intra )
+        # all intra-cluster edges for ego's cluster
+        dset <- E( g )[ inc( V( g )[ memb == v ] ) ]
+        # edge attribute or edges themselves
+        evec <- if( is.na( attr ) ) E( g ) else edge_attr( g, attr )
+        # sum attribute or count edges.
+        agrf <- if( is.na( attr ) ) length else sum
+        return( set_ratio( evec, nset, dset, agrf ) )
         return( num / den )
     }, numeric( 1 ) )
     return( out )
@@ -138,7 +172,7 @@ chk_igraph <- function( g ) {
 
 chk_comm <- function( comm ) {
     if( !'communities' %in% class( comm ) ) {
-        stop( 'comm is not a communities object!' )
+        stop( 'comm is not an igraph communities!' )
     }
 }
 

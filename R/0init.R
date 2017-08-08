@@ -20,6 +20,7 @@
 
 #' @exportPattern "^[[:alpha:]]+"
 #' @importFrom Rcpp evalCpp
+#' @importFrom RcppParallel RcppParallelLibs
 #' @useDynLib wspaces
 NULL
 

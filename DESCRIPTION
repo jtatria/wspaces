@@ -22,4 +22,4 @@ LinkingTo:
     RcppEigen,
     RcppParallel
 RoxygenNote: 6.0.1
-SystemRequirements: C++11, Java, GNU make
+SystemRequirements: Java, GNU make

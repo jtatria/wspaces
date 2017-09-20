@@ -26,7 +26,6 @@ extern "C" {
 
 using namespace Rcpp;
 
-//' @importClassesFrom Matrix dgTMatrix
 S4 triplets( S4 spm ) {
     if( !spm.is( "Matrix" ) ) stop( "spm is not a sparseMatrix" );
     if( spm.is( "dgTMatrix" ) ) return spm;
@@ -34,10 +33,10 @@ S4 triplets( S4 spm ) {
     IntegerVector p = spm.slot("p");
     NumericVector x = spm.slot("x");
     Function f = Environment::namespace_env( "Matrix" )["sparseMatrix"];
+    // Let Matrix work for us.
     return f( _["i"]=i, _["p"]=p, _["x"]=x, _["index1"]=false, _["giveCSparse"]=false );
 }
 
-//' @importClassesFrom Matrix dgCMatrix
 S4 compressed( S4 spm ) {
     if( !spm.is( "Matrix" ) ) stop( "spm is not a sparseMatrix" );
     if( spm.is( "dgCMatrix" ) ) return spm;
@@ -45,16 +44,15 @@ S4 compressed( S4 spm ) {
     IntegerVector j = spm.slot("j");
     NumericVector x = spm.slot("x");
     Function f = Environment::namespace_env( "Matrix" )["sparseMatrix"];
+    // Let Matrix work for us.
     return f( _["i"]=i, _["j"]=j, _["x"]=x, _["index1"]=false, _["giveCSparse"]=true );
 }
 
-//' @importClassesFrom Matrix dgTMatrix
 S4 dgTMatrix( IntegerVector i, IntegerVector j, NumericVector x ) {
     Function f = Environment::namespace_env("Matrix")["sparseMatrix"];
     return f( _["i"]=i, _["j"]=j, _["x"]=x, _["index1"]=false );
 }
 
-//' @importClassesFrom Matrix dgCMatrix
 S4 dgCMatrix( IntegerVector i, IntegerVector p, NumericVector x ) {
     Function f = Environment::namespace_env("Matrix")["sparseMatrix"];
     return f( _["i"]=i, _["p"]=p, _["x"]=x, _["index1"]=false );

@@ -84,16 +84,22 @@ graph_prune_connected <- function(
 #' that a graph will still be considered connected if the minor components are at most orphan nodes,
 #' a tolerance of 2 implies the same if the minor components are at most only dyads, etc.
 #'
-#' @param g   An igraph graph.
-#' @param tol An integer indicating the maximum size of detached components. Defaults to 1.
+#' This function will call \code{igraph::components( g )} if no value is given for the cmps
+#' parameter. \emph{This can be extremely slow}, but so far I have not been able to find or produce
+#' a faster component determination strategy.
+#' If you know of one, please contact me (e.g. if you know how to compute matrix kernels in less
+#' than O(n^3))
+#'
+#' @param g    An igraph graph.
+#' @param tol  An integer indicating the maximum size of detached components. Defaults to 1.
+#' @param cmps An igraph components object. Will be computed over g if none given.
 #'
 #' @return \code{TRUE} if the given graph has no detached component larger than tol, \code{FALSE}
 #'         otherwise.
 #'
 #' @export
 #' @importFrom igraph components
-graph_connected <- function( g, tol = 1 ) {
-    cmps <- components( g )
+graph_connected <- function( g, tol=1, cmps=components( g ) ) {
     if( cmps$no == 1 ) return( TRUE )
     if( max( cmps$csize[ -which.max( cmps$csize ) ] ) > tol ) {
         return( FALSE )
@@ -114,7 +120,7 @@ graph_connected <- function( g, tol = 1 ) {
 #' @param v A vector of vertices in g. Defualts to all vertices in g.
 #' @param attr An edge attribute to sum over the two sets. Set to NA to use cardinalities instead.
 #' @param aggr A function to combine values for the two sets. Defaults to sum.
-comm_vertex_weight <- function( comm, g, v=V( g ), attr='weight', aggr=sum ) {
+graph_weight_vc <- function( comm, g, v=V( g ), attr='weight', aggr=sum ) {
     chk_igraph( g ); chk_comm( comm )
     intra <- !crossing( comm, g )
     out <- vapply( v, function( v ) {
@@ -134,7 +140,7 @@ comm_vertex_weight <- function( comm, g, v=V( g ), attr='weight', aggr=sum ) {
 #' Weight of ego's internal incident edges over all internal edges.
 #'
 #' Computes the ratio between ego's non-community crossing incident edges and all of its community's
-#' internal edges. This measure is also known as ego's neighbourhood's "contribution" to its 
+#' internal edges. This measure is also known as ego's neighbourhood's "contribution" to its
 #' community.
 #'
 #' This can be interpreted as the 'weight' of ego's inmediate neighbourhood on its community.
@@ -144,7 +150,7 @@ comm_vertex_weight <- function( comm, g, v=V( g ), attr='weight', aggr=sum ) {
 #' @param v A vector of vertices in g. Defualts to all vertices in g.
 #' @param attr An edge attribute to sum over the two sets. Set to NA to use cardinalities instead.
 #' @param aggr A function to combine values for the two sets. Defaults to sum.
-vertex_comm_weight <- function( comm, g, v=V( g ), attr='weigth', aggr=sum ) {
+graph_weight_cv <- function( comm, g, v=V( g ), attr='weigth', aggr=sum ) {
     chk_igraph( g ); chk_comm( comm )
     intra <- !crossing( comm, g )
     memb <- membership( comm )

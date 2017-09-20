@@ -99,7 +99,7 @@ obo_rebuild_corpus <- function( obo, reload=TRUE, ... ) {
 #'
 #' If the given vector's length is greater than one, the filter will be constructed as the union of
 #' all individual terms. If it is equal to one, it will be interpreted as a regular expression. If
-#' its 0, the returned document set will be the empty set.
+#' it's 0, the returned document set will be the empty set.
 #'
 #' @param obo   An OBO interface object.
 #' @param field A field over which to construct a document set.

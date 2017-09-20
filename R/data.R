@@ -66,9 +66,9 @@ load_corpus <- function(
     if( nrow( lxcn ) != nrow( freq ) ) corpus_io_error( "freq", nrow( lxcn ), nrow( freq ) )
     if( !quiet ) {
         cmrg <- colSums( freq )
-        message( sprintf(
-            'Frequency data recorded for %d corpus splits. Mean size: %4.2f; std. dev.: %4.2f',
-            length( cmrg ), mean( cmrg ), sd( cmrg )
+        message( sprintf( 'Frequency data recorded for %d corpus splits.', length( cmrg ) ) )
+        message( sprintf( 'Frequencies: min: %d; mean: %4.2f; stdv: %4.2f; max: %d',
+            min( cmrg ), mean( cmrg ), sd( cmrg ), max( cmrg )
         ) )
     }
 
@@ -207,7 +207,7 @@ read_frequencies <- function( file, header=TRUE, sep='@', lxcn=NULL ) {
 read_pos_counts <- function( file, header=TRUE, sep='@', drop=TRUE ) {
     if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
     d <- read_dataset( file, sep=sep, header=header )
-    d <- if( drop ) d[ , -which( colSums( d ) == 0 ) ] else d
+    d <- if( drop ) d[ , which( colSums( d ) > 0 ) ] else d
     return( d )
 }
 

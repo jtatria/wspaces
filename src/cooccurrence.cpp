@@ -19,7 +19,6 @@
                 Implementation of weigth/extent functions of cooccurrence counts.
 ***************************************************************************************************/
 
-
 // [[Rcpp::depends( RcppParallel )]]
 #include "tools.h"
 #include <functional>
@@ -52,8 +51,7 @@ struct CoocWorker : public RcppParallel::Worker {
                 double v = srcIt.value();
                 ind r    = srcIt.row();
                 ind c    = srcIt.col();
-                // tgtIt.valueRef() = func( v, r, c );
-                tgtIt.valueRef() = -1;
+                tgtIt.valueRef() = func( v, r, c );
             }
         }
     }
@@ -156,10 +154,43 @@ inline F<double,ind,ind> get_func(
     }
 }
 
+//' Weight the given cooccurrence matrix.
+//'
+//' Computes one of several weighting and extent functions on the non-zero entries of the given
+//' (sparse) cooccurrence matrix and returns the transformed (sparse) matrix.
+//'
+//' Available weighting functions:
+//'
+//' \itemize{
+//'     \item{0: Type weight: \eqn{P( c | W ) > 0 ? 1 : 0} }
+//'     \item{1: Token weight: \eqn{P( c | W ) > 0} }
+//'     \item{2: PMI: \eqn{ log( P( c, W ) / P( c ) * P( W ) ) } }
+//'     \item{3: Weighted PMI: \eqn{ P( c, W ) * log( P( c, W ) / P( c ) * P( W ) ) } }
+//'     \item{4: t-Test: \eqn{ P( c, W ) - P( c )*P( W ) / \sqrt{ P( c, W ) / N } } }
+//'     \item{5: z-Test: \eqn{ P( c, W ) - P( c )*P( W ) / \sqrt{ ( P( c ) * P( W ) / N ) } } }
+//'     \item{6: Log-likelihood approximation: See below.}
+//' }
+//'
+//' Mode 6 uses [citation needed] 'allr' log-likelihood approximation:
+//' \eqn{ -2 \frac{
+//'     L( F( w, c ), F( w ), F( c ) )
+//' }{
+//'     L( F( w, c ), F( w ), \frac{F( W, c )}{F( W )} )
+//' } } with \eqn{ L(k,n,x) = x^{k} * ( 1 - x )^{n-k} }
+//'
+//' @param m A sparse matrix with raw cooccurrence counts or some function thereof.
+//' @param rowm A vector of length == nrow( m ) with focal (i.e. row) term probabilities.
+//' @param colm A vector of length == ncol( m ) with context (i.e. column) term probabilities.
+//' @param positive Logical. Truncate negative values to zero if reasonable (i.e. use log( p + 1) internally).
+//' @param ow Logical. Operate destructively on m by overwriting it with the result. Defaults to FALSE.
+//' @param mode Weighting function to apply on m. See details.
+//'
+//' @return a sparse matrix with similar structure to m with the results of the weighting function.
+//'
 // [[Rcpp::export]]
 S4 weight_cooc(
     S4 m, Nullable<RVecD> rowm = R_NilValue, Nullable<RVecD> colm = R_NilValue,
-    bool positive = true, bool ow = false, int mode = 3 // plain pmi
+    bool positive = true, bool ow = false, int mode = 2 // plain pmi
 ) {
     SpMat src = as<MSpMat>( m );
     Vec rmrg = rowm.isNull() ? marg_prb( src, Margin::Row ) : as<Vec>( rowm.get() );
@@ -179,8 +210,7 @@ S4 weight_cooc(
             double v = srcIt.value();
             ind r    = srcIt.row();
             ind c    = srcIt.col();
-            // tgtIt.valueRef() = func( v, r, c );
-            tgtIt.valueRef() = -1;
+            tgtIt.valueRef() = func( v, r, c );
         }
     }
 

@@ -25,8 +25,6 @@
 #include <functional>
 #include <RcppParallel.h>
 
-
-
 using namespace Rcpp;
 
 enum Sim {
@@ -34,7 +32,6 @@ enum Sim {
     DWEIGHTED = 1,
     COSINE    = 2,
 };
-
 
 struct SimWorker : public RcppParallel::Worker {
     const Mat src;
@@ -65,7 +62,7 @@ struct SimWorker : public RcppParallel::Worker {
 std::function<double(Vec,Vec,int,int)> get_sim( Sim s ) {
     std::function<double(Vec,Vec,int,int)> func;
     switch( s ) {
-        case ADDITIVE  :  break;
+        case ADDITIVE  : break;
         case DWEIGHTED : break;
         case COSINE    : break;
         default : stop( "Unknown similarity measure requested" );
@@ -75,10 +72,10 @@ std::function<double(Vec,Vec,int,int)> get_sim( Sim s ) {
 
 bool symmetric( Sim s ) {
     switch( s ) {
-        case ADDITIVE : return false;
+        case ADDITIVE  : return false;
         case DWEIGHTED : return false;
-        case COSINE : return true;
-        default : stop( "Unknown simlarity measure requested" );
+        case COSINE    : return true;
+        default : stop( "Unknown similarity measure requested" );
     }
 }
 

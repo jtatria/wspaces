@@ -39,6 +39,7 @@ struct MyWorker : public RcppParallel::Worker {
 S4 para_test( S4 m ) {
     SpMat src = as<MSpMat>( m );
     SpMat tgt = as<MSpMat>( clone( m ) );
+    tgt.makeCompressed();
     MyWorker wrkr( src, tgt );
     RcppParallel::parallelFor( 0, src.outerSize(), wrkr );
     S4 out = wrap( tgt );

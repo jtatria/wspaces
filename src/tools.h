@@ -7,7 +7,7 @@
 const double EPSILON = 0.00000001;
 
 template <typename... args >
-using F = std::function<double(args...) >;
+using F = std::function<double(args...)>;
 
 enum Margin {
     Col = 0,

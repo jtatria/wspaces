@@ -1,4 +1,4 @@
-#include "tools.h"
+#include "tools.hpp"
 
 Vec marginal( const SpMat &src, const Margin &margin, const F<double,double> fold ) {
     Vec out;
@@ -20,7 +20,7 @@ Vec marginal( const SpMat &src, const Margin &margin, const F<double,double> fol
     for( int i = 0; i < src.outerSize(); i++ ) {
         for( SpInIt it( src, i ); it; ++it ) {
             ind tInd = (it.*index)();
-            out.coeffRef( tInd ) = fold( out.coeff( tInd ), it.value() );
+            out[ tInd ] = fold( out[ tInd ], it.value() );
         }
     }
     return out;
@@ -40,3 +40,5 @@ Vec marg_avg( const SpMat &src, const Margin &margin ) {
     Vec cts = marg_sum( src, margin );
     return ( cts.array() / cts.size() ).matrix();
 }
+
+

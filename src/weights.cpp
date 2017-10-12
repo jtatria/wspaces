@@ -16,11 +16,11 @@
  */
 
 /***************************************************************************************************
-                Implementation of weigth/extent functions of cooccurrence counts.
+                Implementation of weigth/extent on sparse matrices
 ***************************************************************************************************/
 
 // [[Rcpp::depends( RcppParallel )]]
-#include "tools.h"
+#include "tools.hpp"
 #include <functional>
 #include <cmath>
 #include <RcppParallel.h>
@@ -37,38 +37,16 @@ enum Weight {
     AllR  = 6,
 };
 
-struct CoocWorker : public RcppParallel::Worker {
-    SpMat src;
-    SpMat tgt;
-    F<double,ind,ind> func;
-
-    CoocWorker( const SpMat& src, SpMat& tgt, const F<double,ind,ind>& func )
-        : src( src ), tgt( tgt ), func( func ) {}
-
-    void operator()( std::size_t begin, std::size_t end ) {
-        for( ind i = begin; i < end; ++i ) {
-            for( SpInIt srcIt( src, i ), tgtIt( tgt, i ); srcIt; ++srcIt, ++tgtIt ) {
-                double v = srcIt.value();
-                ind r    = srcIt.row();
-                ind c    = srcIt.col();
-                tgtIt.valueRef() = func( v, r, c );
-            }
-        }
-    }
-};
-
 F<double,ind,ind> type(
     const double N, const Vec& rmrg, const Vec& cmrg, bool pos
 ) {
-    return [&,N,cmrg]( const double& v, const ind& r, const ind& c ) -> double {
+    return [N,&cmrg]( const double& v, const ind& r, const ind& c ) -> double {
         // P( c | W ) > 0 ? 1 : 0
         return ( v / N ) / cmrg( c ) > 0 ? 1 : 0;
     };
 }
 
-F<double,ind,ind> token(
-    const double N, const Vec& rmrg, const Vec& cmrg, bool pos
-) {
+F<double,ind,ind> token( const double N, const Vec& rmrg, const Vec& cmrg, bool pos ) {
     return [N,&cmrg]( const double& v, const ind& r, const ind& c ) -> double {
         // P( c | W )
         return ( v / N ) / cmrg( c );
@@ -76,9 +54,7 @@ F<double,ind,ind> token(
 }
 
 // All logs are computed as log( x + 1 ) to avoid non-zero values for zero entries.
-F<double,ind,ind> pmi(
-    const double N, const Vec& rmrg, const Vec& cmrg, const bool pos
-) {
+F<double,ind,ind> pmi( const double N, const Vec& rmrg, const Vec& cmrg, const bool pos ) {
     const int add = pos ? 1 : 0;
     return [N,&rmrg,&cmrg,add]( const double& v, const ind& r, const ind& c ) -> double {
         // log( P( c, W ) / P( c ) * P( W ) )
@@ -89,9 +65,7 @@ F<double,ind,ind> pmi(
 }
 
 // All logs are computed as log( x + 1 ) to avoid non-zero values for zero entries.
-F<double,ind,ind> wpmi(
-    const double N, const Vec& rmrg, const Vec& cmrg, const bool pos
-) {
+F<double,ind,ind> wpmi( const double N, const Vec& rmrg, const Vec& cmrg, const bool pos ) {
     const int add = pos ? 1 : 0;
     return [N,&rmrg,&cmrg,add]( const double& v, const ind& r, const ind& c ) -> double {
         // log( P( c, W ) / P( c ) * P( W ) ) * P( c, W )
@@ -101,9 +75,7 @@ F<double,ind,ind> wpmi(
     };
 }
 
-F<double,ind,ind> ttest(
-    const double N, const Vec& rmrg, const Vec& cmrg, const bool pos
-) {
+F<double,ind,ind> ttest( const double N, const Vec& rmrg, const Vec& cmrg, const bool pos ) {
     return [N,&rmrg,&cmrg]( const double& v, const ind& r, const ind& c ) -> double {
         // P( c, W ) - P( c )*P( W ) / sqrt( P( c, W ) / N )
         double num = ( v / N ) - ( rmrg( r ) * cmrg( c ) );
@@ -113,9 +85,7 @@ F<double,ind,ind> ttest(
 }
 
 // z-test weights are not 0 for for zero-entries in the input matrix and these are never computed.
-F<double,ind,ind> ztest(
-    const double N, const Vec& rmrg, const Vec& cmrg, const bool pos
-) {
+F<double,ind,ind> ztest( const double N, const Vec& rmrg, const Vec& cmrg, const bool pos ) {
     return [N,&rmrg,&cmrg]( const double& v, const ind& r, const ind& c ) -> double {
         // P( c, W ) - P( c )*P( W ) / sqrt( ( P( c ) * P( W ) / N ) )
         double num = ( v / N ) - ( rmrg( r ) * cmrg( c ) );
@@ -128,9 +98,7 @@ double L( double k, double n, double x ) {
     return std::pow<double>( x, k ) * std::pow<double>( 1 - x, n - k );
 };
 
-F<double,ind,ind> allr(
-    const double N, const Vec& rmrg, const Vec& cmrg, const bool pos
-) {
+F<double,ind,ind> allr( const double N, const Vec& rmrg, const Vec& cmrg, const bool pos ) {
     return [N,&rmrg,&cmrg]( const double& v, const ind& r, const ind &c ) -> double {
         double num = L( v, rmrg( r ) * N, cmrg( c ) );
         double den = L( v, rmrg( r ) * N, v / ( rmrg( r ) * N ) );
@@ -151,6 +119,43 @@ inline F<double,ind,ind> get_func(
         case ZTest : return ztest( N, rmrg, cmrg, pos ); break;
         case AllR  : return  allr( N, rmrg, cmrg, pos ); break;
         default: stop( "" );
+    }
+}
+
+// Not used for now.
+struct CoocWorker : public RcppParallel::Worker {
+    SpMat src;
+    SpMat tgt;
+    F<double,ind,ind> func;
+
+    CoocWorker( const SpMat& src, SpMat& tgt, const F<double,ind,ind>& func )
+        : src( src ), tgt( tgt ), func( func ) {}
+
+    void operator()( std::size_t begin, std::size_t end ) {
+        for( ind i = begin; i < end; ++i ) {
+            for( SpInIt srcIt( src, i ), tgtIt( tgt, i ); srcIt; ++srcIt, ++tgtIt ) {
+                double v = srcIt.value();
+                ind r    = srcIt.row();
+                ind c    = srcIt.col();
+                tgtIt.valueRef() = func( v, r, c );
+            }
+        }
+    }
+};
+
+void parallel_impl( SpMat src, SpMat tgt, F<double,ind,ind> func ) {
+    CoocWorker wrkr( src, tgt, func );
+    RcppParallel::parallelFor( 0, src.outerSize(), wrkr );
+}
+
+void serial_impl( SpMat src, SpMat tgt, F<double,ind,ind> func ) {
+    for( ind i = 0; i < src.rows(); ++i ) {
+        for( SpInIt srcIt( src, i ), tgtIt( tgt, i ); srcIt; ++srcIt, ++tgtIt ) {
+            double v = srcIt.value();
+            ind r    = srcIt.row();
+            ind c    = srcIt.col();
+            tgtIt.valueRef() = func( v, r, c );
+        }
     }
 }
 
@@ -178,12 +183,14 @@ inline F<double,ind,ind> get_func(
 //'     L( F( w, c ), F( w ), \frac{F( W, c )}{F( W )} )
 //' } } with \eqn{ L(k,n,x) = x^{k} * ( 1 - x )^{n-k} }
 //'
-//' @param m A sparse matrix with raw cooccurrence counts or some function thereof.
-//' @param rowm A vector of length == nrow( m ) with focal (i.e. row) term probabilities.
-//' @param colm A vector of length == ncol( m ) with context (i.e. column) term probabilities.
-//' @param positive Logical. Truncate negative values to zero if reasonable (i.e. use log( p + 1) internally).
-//' @param ow Logical. Operate destructively on m by overwriting it with the result. Defaults to FALSE.
-//' @param mode Weighting function to apply on m. See details.
+//' @param m        A sparse matrix with raw cooccurrence counts or some function thereof.
+//' @param rowm     A vector of length == nrow( m ) with focal (i.e. row) term probabilities.
+//' @param colm     A vector of length == ncol( m ) with context (i.e. column) term probabilities.
+//' @param positive Logical. Truncate negative values to zero if reasonable (i.e. use log( p + 1 )
+//'                 internally).
+//' @param ow       Logical. Operate destructively on m by overwriting it with the result. Defaults
+//'                 to FALSE.
+//' @param mode     Weighting function to apply on m. See details.
 //'
 //' @return a sparse matrix with similar structure to m with the results of the weighting function.
 //'
@@ -197,26 +204,17 @@ S4 weight_cooc(
     Vec cmrg = colm.isNull() ? marg_prb( src, Margin::Col ) : as<Vec>( colm.get() );
     if( cmrg.size() != src.cols() ) stop( "Wrong dimension for row marginal vector" );
     if( cmrg.size() != src.cols() ) stop( "Wrong dimension for column marginal vector" );
+    // TODO: remove this
     if( rmrg.sum() - 1 > EPSILON ) warning( "Row marginal doesn't seem to be a pr. distribution" );
     if( cmrg.sum() - 1 > EPSILON ) warning( "Col marginal doesn't seem to be a pr. distribution" );
     double N  = src.sum();
     SpMat tgt = ow ? src : as<MSpMat>( clone( m ) );
     F<double,ind,ind> func = get_func( static_cast<Weight>( mode ), N, rmrg, cmrg, positive );
 
-    // CoocWorker wrkr( src, tgt, func );
-    // RcppParallel::parallelFor( 0, src.outerSize(), wrkr );
-    for( ind i = 0; i < src.rows(); ++i ) {
-        for( SpInIt srcIt( src, i ), tgtIt( tgt, i ); srcIt; ++srcIt, ++tgtIt ) {
-            double v = srcIt.value();
-            ind r    = srcIt.row();
-            ind c    = srcIt.col();
-            tgtIt.valueRef() = func( v, r, c );
-        }
-    }
+//     parallel_impl( src, tgt, func );
+    serial_impl( src, tgt, func );
 
     S4 out = wrap( tgt );
     out.slot( "Dimnames" ) = m.slot( "Dimnames" );
     return out;
 }
-
-

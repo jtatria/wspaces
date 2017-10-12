@@ -1,8 +1,30 @@
-## With Rcpp 0.11.0 and later, we no longer need to set PKG_LIBS as there is
-## no user-facing library. The include path to headers is already set by R.
-PKG_LIBS += -L /home/jta/src/local/sparse-matrix -lspm
-PKG_LIBS += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
-## With R 3.1.0 or later, you can uncomment the following line to tell R to
-## enable compilation with C++11 (or even C++14) where available
-PKG_CPPFLAGS = -I../inst/include/
-CXX_STD = CXX11
+R_INC = /usr/share/R/include
+RCPP_INC      = /home/jta/R/x86_64-pc-linux-gnu-library/3.3/Rcpp/include
+RCPPEIGEN_INC = /home/jta/R/x86_64-pc-linux-gnu-library/3.3/RcppEigen/include
+
+CUDA_HOME = /usr/local/cuda
+CUDA_INC  = $(CUDA_HOME)/include
+CUDA_LIB  = $(CUDA_HOME)/lib64
+
+PKG_LIBS    += -L /home/jta/src/local/sparse-matrix -lspm -L $(CUDA_LIB) -lcudart
+PKG_CPPFLAGS += -I../inst/include
+PKG_CXXFLAGS += -std=gnu++11
+
+NVCC       = $(CUDA_HOME)/bin/nvcc
+NVCC_FLAGS = -Xcompiler "-fPIC" -gencode arch=compute_35,code=sm_35 -std=c++11
+
+### Define objects
+cu_sources := $(wildcard *cu)
+cu_objects := $(patsubst %.cu, %.o,$(cu_sources))
+
+cpp_sources := $(wildcard *.cpp)
+cpp_objects := $(patsubst %.cpp, %.o, $(cpp_sources))
+
+OBJECTS = $(cu_objects) $(cpp_objects)
+
+all : wspaces.so
+
+wspaces.so: $(OBJECTS)
+
+%.o: %.cu $(cu_sources)
+	$(NVCC) $(NVCC_FLAGS) -I$(CUDA_INC) -I$(R_INC) -I$(RCPP_INC) -I$(RCPPEIGEN_INC) $< -c

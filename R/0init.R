@@ -24,6 +24,10 @@
 #' @useDynLib wspaces
 NULL
 
-.onLoad <- function( libname, pkgname ) {
+java_setup <- function( libname, pkgname ) {
     rJava::.jpackage( pkgname, lib.loc = libname )
+}
+
+.onLoad <- function( libname, pkgname ) {
+    java_setup( libname, pkgname )
 }

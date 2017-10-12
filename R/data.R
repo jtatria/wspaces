@@ -349,7 +349,7 @@ lexical_join <- function( d1, d2 ) {
     d2$key_ <- rownames( d2 )
     out <- dplyr::left_join( d1, d2, by='key_' ) # TODO remove dplyr
     rownames( out ) <- out$key_
-    out %<>% select( -key_ )
+    out %<>% dplyr::select( -key_ )
     return( out )
 }
 

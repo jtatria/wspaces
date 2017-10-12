@@ -150,6 +150,21 @@ obo_count_cooc <- function( obo, lxcn=obo_lexicon( obo ), ds=obo$docSample(), sh
     return( m )
 }
 
+#' @export
+obo_count_freqs <- function( obo, ds=obo$docSample() ) {
+    .jinit()
+    chk_clz( obo, OBO_CLZ )
+    obo$conf()$set( obo$conf()$PARAM_QUIET, 'true' )
+    off <- obo$conf()$freqFile()$toString()
+    tmp <- tempfile()
+    obo$conf()$set( obo$conf()$PARAM_FREQ_FILE, tmp )
+    freq <- obo$countFrequencies( ds )
+    suppressMessages( obo$dumpFrequencies( freq ) )
+    freqs <- read_frequencies( tmp )
+    obo$conf()$set( obo$conf()$PARAM_FREQ_FILE, off )
+    return( freqs )
+}
+
 #' Get all fields contained in the index.
 #'
 #' Obtains a character vector with all fields contained in the corpus index.

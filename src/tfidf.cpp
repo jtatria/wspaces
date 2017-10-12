@@ -19,7 +19,7 @@
                             Term frequency weighting functions.
 ***************************************************************************************************/
 
-#include "tools.h"
+#include "tools.hpp"
 
 using namespace Rcpp;
 
@@ -43,6 +43,12 @@ Vec tf_logNorm( const Vec&, const double& );
 Vec tf_05norm(  const Vec&, const double& );
 Vec tf_Knorm(   const Vec&, const double&, const double& );
 
+Vec idf_unary(  const Vec&, const double& );
+Vec idf_plain(  const Vec&, const double& );
+Vec idf_smooth( const Vec&, const double& );
+Vec idf_max(    const Vec&, const double& );
+Vec idf_prob(   const Vec&, const double& );
+
 // TF dispatch function
 inline Vec tf( int &mode, const Vec &tfs, const double &L ) {
     Vec (*func)( const Vec&, const double& );
@@ -56,12 +62,6 @@ inline Vec tf( int &mode, const Vec &tfs, const double &L ) {
     }
     return (*func)( tfs, L );
 }
-
-Vec idf_unary(  const Vec&, const double& );
-Vec idf_plain(  const Vec&, const double& );
-Vec idf_smooth( const Vec&, const double& );
-Vec idf_max(    const Vec&, const double& );
-Vec idf_prob(   const Vec&, const double& );
 
 // IDF dispatch function
 inline Vec idf( const int &mode, const Vec &dfs, const double &D ) {

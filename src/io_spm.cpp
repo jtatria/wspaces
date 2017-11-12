@@ -67,6 +67,7 @@ S4 dgCMatrix( IntegerVector i, IntegerVector p, NumericVector x ) {
 //' @return A Matrix::sparseMatrix built from the triplets read from the given binary file.
 //'
 //' @importClassesFrom Matrix dgTMatrix
+//' @export
 // [[Rcpp::export]]
 S4 load_spm( std::string file ) {
     SparseMatrix* spm = spm_read( file.c_str() );
@@ -86,6 +87,7 @@ S4 load_spm( std::string file ) {
 //' @param m    A sparseMatrix instance
 //' @param file A file name
 //'
+//' @export
 // [[Rcpp::export]]
 void save_spm( S4 m, std::string file ) {
     m = triplets( m );

@@ -20,7 +20,6 @@
 comp_t <- object.size( c( complex( 1 ), complex( 1 ) ) ) - object.size( complex( 1 ) )
 real_t <- object.size( c( 1.0, 1.0 ) ) - object.size( 1.0 )
 
-
 # io -----------------------------------------------------------------------------------------------
 #' Load corpus data from the given directory.
 #'
@@ -111,6 +110,29 @@ load_corpus <- function(
 
     if( attach ) list2env( corpus, envir=env )
     return( corpus )
+}
+
+#' @export
+load_epochs <- function(
+    dir=getwd(), epochs_dir='epochs', lxcn=NULL,
+    frequencies="freq.dsv", pos_counts="posc.dsv", cooccur="cooc.bin",
+    quiet=FALSE, attach=FALSE, env=.GlobalEnv
+) {
+    if( !quiet ) message( sprintf( "Loading wspaces corpus epoch data from %s", dir ) )
+    edir <- file.path( dir, epochs_dir )
+    edirs <- list.dirs( edir, recursive=FALSE )
+    epochs <- list()
+for( epoch in edirs ) {
+        ename <- gsub( ".*/", "", epoch )
+        if( !quiet ) message( sprintf( "Loading data for epoch %s", ename ) )
+        epochs[[ename]]$freq <- read_frequencies( file.path( epoch, frequencies ) )
+        epochs[[ename]]$posc  <- read_pos_counts( file.path( epoch, pos_counts ) )
+        if( file.exists( file.path( epoch, cooccur ) ) ) {
+            epochs[[ename]]$cooc  <- read_cooccur( file.path( epoch, cooccur ), lxcn=lxcn )
+        }
+    }
+    if( attach ) list2env( epochs, envir=env )
+    return( epochs )
 }
 
 #' Wrapper for \code{\link{data.table::fread}} for lexical datasets.
@@ -251,8 +273,8 @@ read_cooccur <- function( file, lxcn=NULL, shrink=is.null( lxcn ) ) {
     if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
     m <- load_spm( path.expand( file ) )
     if( !is.null( lxcn ) ) {
-        if( ( exp = nrow( lxcn ) ) != ( obs = nrow( m ) ) ) {
-            stop( sprintf( "Wrong dimensions for cooccurence matrix: exp %d, got %d", exp, obs ) )
+        if( ( exp = nrow( lxcn ) ) < ( obs = nrow( m ) ) ) {
+            stop( sprintf( "Extra rows in cooccurence matrix: exp %d, got %d", exp, obs ) )
         }
         rownames( m ) <- rownames( lxcn )[ 1:nrow( m ) ]
         colnames( m ) <- rownames( lxcn )[ 1:ncol( m ) ]
@@ -334,23 +356,105 @@ lexical_dataset <- function( d ) {
 
 #' Join lexical datasets.
 #'
-#' wspaces lexical datasets maintain row identity in rownames. This function wraps
-#' \code{\link{dplyr::left_join}} to join the given datasets on rownames.
+#' wspaces lexical datasets maintain row identity in rownames. This function wraps joining
+#' operations to enforce wspaces rowname conventions.
 #'
-#' @param d1 A lexical dataset
-#' @param d2 A lexical dataset
+#' If no key names are given, joins are performed on the rownames of the given data sets. If a key
+#' names is given for either d1 or d2, the column named with that key name is used for the
+#' corresponding data set.
 #'
-#' @return the left join between d1 and d2, on rownames.
+#' By default, the effective join key (rownames or named vector) will be added as rownames in the
+#' results data frame, unless the no.rn parameter is TRUE or its values in the result are not
+#' unique, which will result in a warning.
+#'
+#' The ode parameter indicates the kind of join: 'left' or 'right' will will return all rows in d1
+#' or d2 with all columns from d1 and d2. 'inner' will return only the intersection of both d1 and
+#' d2 with columns from d1 and d2. 'full' will return the union of d1 and d2, with columns from d1
+#' and d2. The default is 'left': add data from d2 to all rows in d1.
+#'
+#' @param d1    A lexical dataset.
+#' @param d2    A lexical dataset.
+#' @param k1    An optional character vector with the name of a key for d1 to use instead of
+#'              rownames. Defaults to NULL (join on rownames).
+#' @param k2    An optional character vector with the name of a key for d2 to use instead of
+#'              rownames. Defaults to NULL (join on rownames).
+#' @param mode  One of 'left', 'right', 'inner', or 'full' specifying the kind of join to perform.
+#'              Defaults to 'left' (add data from d2 to d1).
+#' @param no.rn Logical, don't attempt to add rownmaes to result. Defaults to FALSE.
+#'
+#' @return A data frame with the results of the join.
 #'
 #' @export
-#' @importFrom dplyr left_join select
-lexical_join <- function( d1, d2 ) {
-    d1$key_ <- rownames( d1 )
-    d2$key_ <- rownames( d2 )
-    out <- dplyr::left_join( d1, d2, by='key_' ) # TODO remove dplyr
-    rownames( out ) <- out$key_
+#' @importFrom dplyr left_join full_join select
+lexical_join <- function(
+    d1, d2, k1=NULL, k2=NULL, mode=c( 'left','right', 'inner','full' ), no.rn=FALSE
+) {
+    d1$key_ <- if( is.null( k1 ) ) rownames( d1 ) else d1[[k1]]
+    d2$key_ <- if( is.null( k2 ) ) rownames( d2 ) else d1[[k2]]
+    mode = match.arg( mode )
+    out <- switch( mode,
+         # TODO remove dplyr
+        left  = dplyr::left_join(  d1, d2, by='key_' ),
+        right = dplyr::left_join(  d2, d1, by='key_' ),
+        inner = dplyr::inner_join( d1, d2, by='key_' ),
+        full  = dplyr::full_join(  d1, d2, by='key_' ),
+        stop( "Unsupported join mode requested" )
+    )
+    if( no.rn || length( unique( out$key_ ) ) != length( out$key_ ) ) {
+        if( !no.rn ) warning( 'Can\'t add non-unique key as rownames to result' )
+    } else {
+        rownames( out ) <- out$key_
+    }
     out %<>% dplyr::select( -key_ )
     return( out )
+}
+
+#' Lexical sampling.
+#'
+#' Extracts samples from a TF vector such that the sampled terms account for the given theta
+#' proportion of the total mass in the TF vector.
+#'
+#' This function assumes that the TF vector is sorted in descending frequency following Zipf's
+#' law such that sampling a relatively small number of entries from the top of the given vector
+#' will suffice to cover the requested total mass percentage.
+#'
+#' This strategy will fail miserably if a) the given TF vector is not sorted in descending order
+#' (though it can be sorted internally) or b) the entries in the given vector do not follow Zipf's
+#' law. Use accordingly.
+#'
+#' This function also allows for censoring the given TF vector according a filtering vector. In
+#' this case, the 'univ' parameter controls whether mass coverage should be computed against the
+#' mass of the full tf vector, or against the mass of the censored tf vector. Setting 'univ' to
+#' TRUE will result in larger samples, as a higher number of elements is needed to account for the
+#' same mass proportion.
+#'
+#' @param tf     A term frequency vector, typically sorted in descending order.
+#' @param filter Logical vector of length equal to tf to exclude entries based on prior conditions
+#'               (e.g. POS tag). Defaults to TRUE for all entries.
+#' @param theta  A numeric value s.t. 0 < theta < 1 indicating the total tf mass that should be
+#'               covered by the resulting sample.
+#' @param univ   Logical indicating whether the covered mass should be computed against all entries
+#'               in tf or only against those that pass the filter. Ignored if filter is NULL,
+#'               defaults to FALSE (compute against censored tf).
+#' @param sort   Logical indicating whether the given vector should be resorted. Use with caution,
+#'               as most lexical sets in wspaces assume a fixed sort order.
+#'
+#' @return A logical vector \emph{of the same length as tf} indicating whether the corresponding
+#'         entry in tf is included in the sample or not.
+#'
+#' @export
+lexical_sample <- function( tf, filter=NULL, theta=.95, univ=FALSE, sort=FALSE ) {
+    if( theta >= 1 || theta <= 0 ) stop( sprintf(
+        "Invalid theta %s given: Must be between 0 and 1 (both excluded)"
+    ) )
+    if( sort ) tf <- tf[ order( tf ) ]
+    filter <- if( !is.null( filter ) ) {
+        # TODO allow recylcing? int vectors?
+        if( length( filter ) != length( tf ) ) stop( 'Wrong dimension for filter vector' )
+        else filter
+    } else rep( TRUE, length( tf ) )
+    cum <- cumsum( ifelse( filter, tf, 0 ) ) / sum( if( univ ) tf else tf[filter] )
+    return( cum <= theta )
 }
 
 #' Extract term data from the given lexical dataset.
@@ -391,9 +495,10 @@ term_idx <- function( d, terms ) {
         rownames( d )
     } else {
         stop( sprintf(
-            "d must be a vector, matrix or data.frame, got %s",
+            "d must be a named vector, matrix or data.frame, got %s",
             paste( class( d ), collapse=", " )
         ) )
     }
     return( which( u %in% terms ) )
 }
+

@@ -23,58 +23,67 @@
 
 using namespace Rcpp;
 
-const int TF_BOOLEAN = 0;
-const int TF_RAW     = 1;
-const int TF_NORM    = 2;
-const int TF_LOGNORM = 3;
-const int TF_05NORM  = 4;
-const int TF_KNORM   = 5;
+enum TF {
+    Boolean = 0,
+    Raw     = 1,
+    Norm    = 2,
+    Lognorm = 3,
+    K5Norm  = 4,
+};
 
-const int IDF_UNARY  = 0;
-const int IDF_PLAIN  = 1;
-const int IDF_SMOOTH = 2;
-const int IDF_MAX    = 3;
-const int IDF_PROB   = 4;
-
-Vec tf_bool(    const Vec&, const double& );
-Vec tf_raw(     const Vec&, const double& );
-Vec tf_norm(    const Vec&, const double& );
-Vec tf_logNorm( const Vec&, const double& );
-Vec tf_05norm(  const Vec&, const double& );
-Vec tf_Knorm(   const Vec&, const double&, const double& );
-
-Vec idf_unary(  const Vec&, const double& );
-Vec idf_plain(  const Vec&, const double& );
-Vec idf_smooth( const Vec&, const double& );
-Vec idf_max(    const Vec&, const double& );
-Vec idf_prob(   const Vec&, const double& );
+enum IDF {
+    Unary  = 0,
+    Plain  = 1,
+    Smooth = 2,
+    Max    = 3,
+    Prob   = 4,
+};
 
 // TF dispatch function
-inline Vec tf( int &mode, const Vec &tfs, const double &L ) {
-    Vec (*func)( const Vec&, const double& );
-    switch( mode ) {
-        case TF_BOOLEAN : func = tf_bool;    break;
-        case TF_RAW     : func = tf_raw;     break;
-        case TF_NORM    : func = tf_norm;    break;
-        case TF_LOGNORM : func = tf_logNorm; break;
-        case TF_05NORM  : func = tf_05norm;  break;
-        default: Rcpp::stop( "Unknown mode for TF function" );
+inline std::function<Vec(Vec,scalar)> get_tf( const int mode ) {
+    TF tf = static_cast<TF>( mode );
+    switch( tf ) {
+        case Boolean : return []( const Vec& tf, const scalar L ) -> Vec {
+            return tf.cwiseSign();
+        };
+        case Raw     : return []( const Vec& tf, const scalar L ) -> Vec {
+            return tf;
+        };
+        case Norm    : return []( const Vec& tf, const scalar L ) -> Vec {
+            return tf / L;
+        };
+        case Lognorm : return []( const Vec& tf, const scalar L ) -> Vec {
+            return ( ( tf / L ).array() + 1 ).log().matrix();
+        };
+        case K5Norm  : return []( const Vec& tf, const scalar L ) -> Vec {
+            scalar K = 0.5;
+            return ( tf / tf.maxCoeff() ) * ( K + ( 1 - K ) );
+        };
+        default : Rcpp::stop( "Unknown mode for TF function" );
     }
-    return (*func)( tfs, L );
 }
 
 // IDF dispatch function
-inline Vec idf( const int &mode, const Vec &dfs, const double &D ) {
-    Vec (*func)( const Vec&, const double &D );
-    switch( mode ) {
-        case IDF_UNARY  : func = idf_unary; break;
-        case IDF_PLAIN  : func = idf_plain; break;
-        case IDF_SMOOTH : func = idf_smooth; break;
-        case IDF_MAX    : func = idf_max; break;
-        case IDF_PROB   : func = idf_prob; break;
+inline std::function<Vec(Vec,scalar)> get_idf( const int mode ) {
+    IDF idf = static_cast<IDF>( mode );
+    switch( idf ) {
+        case Unary  : return []( const Vec& df, const scalar D ) -> Vec {
+            return df.cwiseSign();
+        };
+        case Plain  : return []( const Vec& df, const scalar D ) -> Vec {
+            return ( df.array().inverse() * D ).log().matrix();
+        };
+        case Smooth : return []( const Vec& df, const scalar D ) -> Vec {
+            return ( ( df.array().inverse() * D ) + 1 ).log().matrix();
+        };
+        case Max    : return []( const Vec& df, const scalar D ) -> Vec {
+            return ( df.array().inverse() * df.maxCoeff() ).log().matrix();
+        };
+        case Prob   : return []( const Vec& df, const scalar D ) -> Vec {
+            return ( ( df.array().inverse() ) * ( ( df.array() ) * -1 + D ) ).log().matrix();
+        };
         default: Rcpp::stop( "Unknown mode for IDF function" );
     }
-    return (*func)( dfs, D );
 }
 
 //' Compute TF weights for the given raw TF vector.
@@ -101,9 +110,10 @@ inline Vec idf( const int &mode, const Vec &dfs, const double &D ) {
 //'             details.
 //' @return A vector of the same size as tfs with TF weights.
 //'
+//' @export
 // [[Rcpp::export]]
-RVecD tf( RVecD tfs, double L, int mode = 2 ) {
-    return wrap( tf( mode, as<Vec>( tfs ), L ) );
+RVecD weight_tf( RVecD tfs, double L, int mode = 2 ) {
+    return wrap( get_tf( static_cast<TF>( mode ) )( as<Vec>( tfs ), L ) );
 }
 
 //' Compute IDF weights for the given DF vector.
@@ -131,9 +141,10 @@ RVecD tf( RVecD tfs, double L, int mode = 2 ) {
 //'             details.
 //' @return A vector of the same length as dfs with IDF weights.
 //'
+//' @export
 // [[Rcpp::export]]
-RVecD idf( RVecD dfs, double D, int mode = 2 ) {
-  return wrap( idf( mode, as<Vec>( dfs ), D ) );
+RVecD weight_idf( RVecD dfs, double D, int mode = 2 ) {
+  return wrap( get_idf( static_cast<IDF>( mode ) )( as<Vec>( dfs ), D ) );
 }
 
 //' TF-IDF weighting.
@@ -163,9 +174,9 @@ RVecD idf( RVecD dfs, double D, int mode = 2 ) {
 //'     \item{0: Boolean: 1 if tf > 0; 0 otherwise.}
 //'     \item{1: Raw: Raw term frequency.}
 //'     \item{2: Normalized: (default) Term frequency divided by the total number of terms
-//'              in document (the 'length').}
-//'     \item{3: Log-normlized: Natural log of the term frequency over total document
-//'              terms, + 1.}
+//'              in the document or segment (the 'word length').}
+//'     \item{3: Log-normlized: Natural log of the term frequency divided by the total number of
+//'              terms in the document or segment (the 'word length'), + 1.}
 //'     \item{4: 0.5 normalized: K*(1-K) * (tf / max( tf ) ), with K set to 0.5.}
 //'   }
 //'   \item{IDF modes}
@@ -181,76 +192,44 @@ RVecD idf( RVecD dfs, double D, int mode = 2 ) {
 //'   }
 //' }
 //'
-//' @param tf_       A matrix with one row for each term, and as many columns as documents or corpus
-//'                  segments there are frequencies for.
-//' @param df_       A vector of length equal the number of rows in tf_, containing document
-//'                  frequencies, to compute the IDF component.
-//' @param tf_mode   A term frequency weigthing strategy. See details.
-//' @param idf_mode  An inverse document frequency weigthing strategy. See details.
-//' @param ow        A logical vector indicating whether the result should be destructively copied
-//'                  over the input matrix.
+//' @param tf       A matrix with one row for each term, and as many columns as documents or corpus
+//'                 segments there are frequencies for.
+//' @param fd       A vector of length equal the number of rows in tf_, containing document
+//'                 frequencies, to compute the IDF component.
+//' @param D        Total number of documents. Defaults to 0, in which case it is taken from the
+//'                 number of columns in tf.
+//' @param tf_mode  A term frequency weigthing strategy. See details.
+//' @param idf_mode An inverse document frequency weigthing strategy. See details.
+//' @param normal   Normalize the resulting vector to the (0,1] range.
+//' @param ow       A logical vector indicating whether the result should be destructively copied
+//'                 over the input matrix.
 //'
 //' @return An isomorphic matrix to tf_, with entries weighted by the given strategy. If ow == TRUE,
 //'        tf_ is replaced with this value.
+//' @export
 // [[Rcpp::export]]
-RMatD tfidf( RMatD tf_, RVecD df_, int tf_mode = 2, int idf_mode = 2, bool ow = false ) {
-    if( tf_.rows() != df_.length() ) {
+RMatD tfidf(
+    RMatD tf, RVecD df, scalar D=0.0, int tf_mode = 2, int idf_mode = 2, bool normal=false,
+    bool ow = false
+) {
+    if( tf.rows() != df.length() ) {
         // stop( std::sprintf( "Wrong dim for DF vector: got %d, wanted %d", df.rows(), m.cols() ) ;)
     }
-    Mat m  = as<Mat>( tf_ );
-    Vec df = as<Vec>( clone( df_ ) );
-    Vec L  = m.colwise().sum();
-    Vec idfs = idf( idf_mode, df, m.cols() );
-    Mat out = ow ? m : as<Mat>( clone( tf_ ) );
-    for( int i = 0; i < m.cols(); i++ ) {
-        out.col( i ) = ( tf( tf_mode, m.col( i ), L[i] ) ).array() * ( idfs.array() );
+    Mat src   = as<Mat>( tf );
+    Mat tgt   = ow ? src : Mat( src.rows(), src.cols() );
+    Vec dfs   = as<Vec>( df );
+    Vec L     = src.colwise().sum();
+    D = ( D <= 0.0 ? src.cols() : D );
+
+    Vec idfs  = get_idf( idf_mode )( dfs, D );
+    for( int i = 0; i < src.cols(); i++ ) {
+        Vec res = get_tf( tf_mode )( src.col( i ), L[i] ).cwiseProduct( idfs );
+        res = normal ? res / res.maxCoeff() : res;
+        tgt.col( i ) = res;
     }
+
+    RMatD out = wrap( tgt );
+    out.attr( "Dimnames" ) = tf.attr( "Dimnames" );
     return wrap( out );
 }
 
-
-// TF functions
-inline Vec tf_bool( const Vec &tfs, const double &L ) {
-    return tfs.cwiseSign();
-}
-
-inline Vec tf_raw( const Vec &tfs, const double &L ) {
-    return tfs;
-}
-
-inline Vec tf_norm( const Vec &tfs, const double &L ) {
-    return tfs / L;
-}
-
-inline Vec tf_logNorm( const Vec &tfs, const double &L ) {
-    return ( ( tfs / L ).array() + 1 ).log().matrix();
-}
-
-inline Vec tf_05norm( const Vec &tfs, const double &L ) {
-    return tf_Knorm( tfs, L, 0.5 );
-}
-
-inline Vec tf_Knorm( const Vec &tfs, const double &L, const double &K = 0.5 ) {
-    return ( tfs / tfs.maxCoeff() ) * ( K + ( 1 - K ) );
-}
-
-// IDF functions
-inline Vec idf_unary( const Vec &dfs, const double &D ) {
-    return dfs.cwiseSign();
-}
-
-inline Vec idf_plain( const Vec &dfs, const double &D ) {
-    return ( dfs.array().inverse() * D ).log().matrix();
-}
-
-inline Vec idf_smooth( const Vec &dfs, const double &D ) {
-    return ( ( dfs.array().inverse() * D ) + 1 ).log().matrix();
-}
-
-inline Vec idf_max( const Vec &dfs, const double &D ) {
-    return ( dfs.array().inverse() * dfs.maxCoeff() ).log().matrix();
-}
-
-inline Vec idf_prob( const Vec &dfs, const double &D ) {
-    return ( ( dfs.array().inverse() ) * ( ( dfs.array() ) * -1 + D ) ).log().matrix();
-}

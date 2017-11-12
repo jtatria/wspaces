@@ -27,4 +27,10 @@ inline bool isomorphic( const Mat m1, const Mat m2, bool bail=true ) {
     }
 }
 
+template<typename RM,typename M>
+RM asRowMajor( M, bool );
+
+template<typename CM,typename M>
+CM asColMajor( M, bool );
+
 #endif // TOOLS_

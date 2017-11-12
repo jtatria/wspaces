@@ -21,7 +21,24 @@
 NS       <- "edu/columbia/incite/obo"
 OBO_CLZ  <- paste( NS, 'OBO', sep="/" )
 CONF_CLZ <- paste( NS, 'OBOConf', sep='/' )
-RHLP_CLZ <- paste( NS, 'util', 'RHelper', sep ='/')
+DS_CLZ   <- paste( NS, 'util', 'DocSet', sep='/' )
+RHLP_CLZ <- paste( NS, 'util', 'RHelper', sep ='/' )
+
+# TODO: add logic to check for destruction of JVM on rm of last obo object.
+
+infof <- function( format, ... ) {
+    .jinit
+    msg <- sprintf( format, ... )
+    log <- J( "java.util.logging.Logger", "getLogger", "edu.columbia.incite" )
+    log$info( msg )
+}
+
+warnf <- function( format, ... ) {
+    .jinit
+    msg <- sprintf( format, ... )
+    log <- J( "java.util.logging.Logger", "getLogger", "edu.columbia.incite" )
+    log$warning( msg )
+}
 
 #' Create a new OBO conf object
 #'
@@ -39,11 +56,13 @@ RHLP_CLZ <- paste( NS, 'util', 'RHelper', sep ='/')
 #' @export
 #' @importFrom rJava .jinit .jnew
 obo_mkconf <- function( ... ) {
+    # TODO add par-like behaviour to conf
     args <- list( ... )
     .jinit()
     conf <- .jnew( CONF_CLZ )
-    for( param in names( args ) ) {
-        conf$set( param, args[[param]] )
+    for( arg in names( args ) ) {
+        par <- if( grep( "_(file|dir)", arg ) ) path.expand( args[[arg]] ) else args[[arg]]
+        conf$set( arg, par )
     }
     return( conf )
 }
@@ -109,18 +128,78 @@ obo_rebuild_corpus <- function( obo, reload=TRUE, ... ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J .jarray
-obo_mkdocset <- function( obo, field, terms ) {
+obo_mkdocset <- function( obo, field=NULL, terms ) {
     .jinit()
     chk_clz( obo, OBO_CLZ )
+    # TODO: add support for int vectors?
+    terms <- as.character( terms )
+    field <- if( is.null( field ) ) obo$conf()$fieldDocId() else field
     if( length( field ) == 0 ) stop( 'empty field given' )
     if( length( field ) > 1 ) {
-        warning( sprintf( 'multiple field names given for doc set. using %s', field[1] ) )
+        infof( 'multiple field names given for doc set. using %s', field[1] )
     }
     if( length( terms ) > 1 ) {
         return( obo$makeDocSet( field, .jarray( terms ) ) )
     } else {
         return( obo$makeDocSet( field, terms ) )
     }
+}
+
+#' Intersect document sets.
+#'
+#' Combines the given documents sets such that the resulting document set is equal to their
+#' intersection. This is equivalent to a logical AND over both document sets' vectors, but avoids
+#' instantiating the full int vector.
+
+#' @param ds1  A DocSet, built from \code{\link{obo_mkdocset}}.
+#' @param ds2  A DocSet, built from \code{\link{obo_mkdocset}}.
+#' @param free Logical indicating if the input sets shuld be destroyed in order to attempt recovery
+#'             of their heap memory. Defaults to FALSE.
+#'
+#' @return A DocSet instance that can be used to select observations from a corpus equal to the
+#'         intersection of the given doc sets.
+#'
+#' @export
+#' @importFrom rJava .jinit J
+obo_intersect <- function( ds1, ds2, free=FALSE ) {
+    .jinit()
+    chk_clz( ds1, DS_CLZ ); chk_clz( ds1, DS_CLZ )
+    infof( "Intersecting doc set of size %d with doc set of size %d", ds1$size(), ds2$size() )
+    ds <- ds1$intersect( ds2 )
+    infof( "Resulting doc set has %d elements", ds$size() )
+    if( free ) {
+        J( RHLP_CLZ, "release", ds1 )
+        J( RHLP_CLZ, "release", ds2 )
+    }
+    return( ds )
+}
+
+#' Obtain document sets for different document samples.
+#'
+#' Produces a doc set instance representing the requested sample. Samples are hardcoded for now,
+#' pending a stale API to pass index queries back to the backend.
+#'
+#' Backend currently offers three samples: 'testimony' corresponds to all documents in a trial that
+#' do not contain any legal entities. 'legal' corresponds to all documents in a trial that do
+#' contain legal entities. 'trials' contain all documents in trial accounts.
+#' \eqn{ testimony \cup legal = trials}.
+#'
+#' @param obo    An OBO interface object
+#' @param sample The requested sample. One of "testimony", "legal", or "trials".
+#'
+#' @return A DocSet instance that can be used to select observations from a corpus corresponding
+#'         to the requested sample.
+#' @export
+obo_sample <- function( obo, sample=c('testimony','legal','trials'), negate=FALSE ) {
+    .jinit()
+    chk_clz( obo, OBO_CLZ )
+    sample = match.arg( sample )
+    ds <- if( negate ) {
+        ds <- obo$complement( sample )
+    } else {
+        ds <- obo$getSample( sample )
+    }
+    return( ds )
 }
 
 #' Count cooccurrences over the given document set.
@@ -137,31 +216,47 @@ obo_mkdocset <- function( obo, field, terms ) {
 #' @export
 #' @importFrom Matrix sparseMatrix rowSums colSums
 #' @importFrom rJava .jinit
-obo_count_cooc <- function( obo, lxcn=obo_lexicon( obo ), ds=obo$docSample(), shrink=TRUE ) {
+obo_count_cooc <- function( obo, ds=obo$docSample(), shrink=TRUE ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
-    obo$conf()$set( 'quiet', 'true' )
-    cooc <- obo$countCooccurrences( ds )
+    chk_clz( obo, OBO_CLZ ); chk_clz( ds, DS_CLZ )
+    prog <- J( RHLP_CLZ, "report" )
+    cooc <- obo$countCooccurrences( ds, prog )
     ar <- cooc$arrays()
     m <- sparseMatrix( i=( ar$i + 1 ), j=( ar$j + 1 ), x=ar$x )
-    rownames( m ) <- rownames( lxcn )[ 1:nrow( m ) ]
-    colnames( m ) <- rownames( lxcn )[ 1:ncol( m ) ]
+    J( RHLP_CLZ, "release", cooc )
+    J( RHLP_CLZ, "release", ar )
+    terms <- obo$lexicon()$arrays()$terms
+    rownames( m ) <- terms[ 1:nrow( m ) ]
+    colnames( m ) <- terms[ 1:ncol( m ) ]
     if( shrink ) m <- m[ rowSums( m ) > 0, colSums( m ) > 0 ]
     return( m )
 }
 
+#' Count frequencies over the given document set
+#'
+#' Produces a frequency table containing term frequencies for all terms in the lexicon in the
+#' documents contained in the given doc set, split by the terms found in the configured split field.
+#'
+#' @param obo An OBO interface object
+#' @param ds  A DocSet, built from \code{\link{obo_mkdocset}}. If none given, defaults to the given
+#'            index's default doc sample.
+#'
+#' @return A lexical dataset containing term frequencies for the given documents over the
+#'         configured field.
+#'
 #' @export
+#' @importFrom rJava .jinit J
 obo_count_freqs <- function( obo, ds=obo$docSample() ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
-    obo$conf()$set( obo$conf()$PARAM_QUIET, 'true' )
+    chk_clz( obo, OBO_CLZ ); chk_clz( ds, DS_CLZ )
+    prog <- J( RHLP_CLZ, "report" )
     off <- obo$conf()$freqFile()$toString()
-    tmp <- tempfile()
-    obo$conf()$set( obo$conf()$PARAM_FREQ_FILE, tmp )
-    freq <- obo$countFrequencies( ds )
-    suppressMessages( obo$dumpFrequencies( freq ) )
-    freqs <- read_frequencies( tmp )
+    obo$conf()$set( obo$conf()$PARAM_FREQ_FILE, ( tmp <- tempfile() ) )
+    freq <- obo$countFrequencies( ds, prog )
+    obo$dumpFrequencies( freq )
     obo$conf()$set( obo$conf()$PARAM_FREQ_FILE, off )
+    J( RHLP_CLZ, "release", freq )
+    freqs <- read_frequencies( tmp )
     return( freqs )
 }
 
@@ -202,9 +297,23 @@ obo_get_terms <- function( obo, field ) {
     .jinit()
     chk_clz( obo, OBO_CLZ )
     if( length( field ) > 1 ) {
-        warning( sprintf( 'multiple field names given for doc set. using %s', field[1] ) )
+        warnf( 'multiple field names given for doc set. using %s', field[1] )
     }
     return( J( RHLP_CLZ, 'terms', obo$indexReader(), field[1] ) )
+}
+
+#' Get the total number of documents in the given index.
+#'
+#' @param obo An OBO interface object.
+#'
+#' @return An integer equal to the total number of documents in the given index.
+#'
+#' @export
+#' @importFrom rJava .jinit
+obo_numdocs <- function( obo ) {
+    .jinit()
+    chk_clz( obo, OBO_CLZ )
+    return( obo$indexReader()$numDocs() )
 }
 
 #' @importFrom rJava %instanceof%

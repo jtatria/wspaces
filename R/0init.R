@@ -18,13 +18,17 @@
 #### Package-wide initialization                                                                ####
 ####################################################################################################
 
-#' @exportPattern "^[[:alpha:]]+"
+# @exportPattern "^[[:alpha:]]+"
 #' @importFrom Rcpp evalCpp
 #' @importFrom RcppParallel RcppParallelLibs
 #' @useDynLib wspaces
 NULL
 
+JAVA_XMX = 2048
+
 java_setup <- function( libname, pkgname ) {
+    # TODO: remove pending rJava memory management
+    options( java.parameters=sprintf( "-Xmx%dm", JAVA_XMX ) )
     rJava::.jpackage( pkgname, lib.loc = libname )
 }
 

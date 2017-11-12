@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ####################################################################################################
-#### Functions for creating and manipulating semantic networks                                  ####
+####                 Functions for creating and manipulating semantic networks                  ####
 ####################################################################################################
 
 #' Prune a graph maintaining connectivity
@@ -108,65 +108,210 @@ graph_connected <- function( g, tol=1, cmps=components( g ) ) {
     }
 }
 
-#' Weight of ego's internal incident edges over all of its incident edges.
+#' Community and neighbourhood contributions
 #'
-#' Computes the ratio between ego's non-community crossing incident edges and all of its incident
-#' edges. This measure is also known as ego's community's "contribution" to ego's neighbourhood.
+#' This function computes the contributions of either a vertex's neighbourhood to its enclosing
+#' community or a vertex's community to its sorrounding neighbourhood.
 #'
-#' This can be interpreted as the 'weight' of ego's community on its inmediate neighbourhood.
+#' Contributions are computed for each vertes as a ratio of a measure function of a numerator
+#' set equal to a vertex's non-community crossing edges over a measure function over a denominator
+#' set equal to a) all of its incident edges in the case of cluster to neighbourhood contribution
+#' and b) all of its enclosing community in the case of neighbourhood to cluster contributions.
 #'
-#' @param comm A communities object. The result of a cluster-finding function on g.
-#' @param g The graph.
-#' @param v A vector of vertices in g. Defualts to all vertices in g.
-#' @param attr An edge attribute to sum over the two sets. Set to NA to use cardinalities instead.
-#' @param aggr A function to combine values for the two sets. Defaults to sum.
-graph_weight_vc <- function( comm, g, v=V( g ), attr='weight', aggr=sum ) {
-    chk_igraph( g ); chk_comm( comm )
-    intra <- !crossing( comm, g )
-    out <- vapply( v, function( v ) {
-        # ego's intra-cluster incident edges
-        nset <- ( ( E( g ) %in% incident( g, v ) ) & intra )
-        # all of ego's incident edges
-        dset <- ( ( E( g ) %in% incident( g, v ) ) )
-        # edge attribute or edges themselves
-        evec <- if( is.na( attr ) ) E( g ) else edge_attr( g, attr )
-        # sum attribute or count edges.
-        agrf <- if( is.na( attr ) ) length else sum
-        return( set_ratio( evec, nset, dset, agrf ) )
-    }, numeric( 1 ) )
+#' The mode parameters controls which direction is computed, 'vc' computes negihborhood to cluster
+#' contribution, 'cv' computes cluster to neighbourhood contributions.
+#'
+#' The attr parameter gives the names of an edge attribute to use as input for the measure function.
+#' If none is given, edges are simply counted for both sets.
+#'
+#' The aggr parameter allows specification of a different aggregation function if edge attributes
+#' are used.
+#'
+#' @param g    An igraph graph.
+#' @param c    An igraph communities object.
+#' @param mode Characer vector indicating the direction of the measure; one of 'vc' or 'cv'. See
+#'             details.
+#' @param vset An optional set of vertices to compute the measure for. Defaults to V( g ) (i.e. all
+#'             vertices).
+#' @param attr The name of an edge attribute to use as input for the aggregation funciton. Set to
+#'             NA to use edge counts instead. Defaults to 'weight' if g is weighted.
+#' @param aggr The aggregation function to use over both sets. Only applicable to edge attributes;
+#'             ignored if attr is NA. Defaults to sum.
+#'
+#' @return A vector of length equal to the number of vertices in the given vset with the requested
+#'         contribution measure values for each vertex in its assigned community.
+#'
+#' @export
+#' @importFrom igraph crossing membership incident
+graph_cluster_contrib <- function(
+    g, c, mode=c('cv','vc'), vset=V( g ),
+    attr=ifelse( is.weighted( g ), 'weight', NA ), aggr=ifelse( is.na( attr ), length, sum )
+) {
+    chk_igraph( g ); chk_comm( c ); mode=match.arg( mode );
+    intra  <- !crossing( c, g )
+    membs  <- membership( c )
+    evec   <- if( is.na( attr ) ) {
+        E( g )
+    } else if( !is.null( edge_attr( g, attr ) ) ) {
+        edge_attr( g, attr )
+    } else {
+        warning( sprintf(
+            "%s edge attr missing from graph. treating as unweighted, counting edges", attr
+        ) )
+        attr <- NA
+        E( g )
+    }
+    nfunc <- function( v ) ( ( E( g ) %in% incident( g, v ) ) & intra )
+    dfunc <- switch( mode,
+        vc = function( v ) ( ( E( g ) %in% incident( g, v ) ) ),
+        cv = function( v ) ( E( g ) %in% E( g )[ .inc( V( g )[ membs == membs[v] ] ) ] )
+    )
+    aggrf <- if( is.na( attr ) ) length else aggr
+    vfunc <- function( v ) { # div_set_ratio( evec, nset, dset, aggrf )
+        nset = nfunc( v ) # this must be created in advance, because nfunc and dfunc do not exist
+        dset = dfunc( v ) # in div_set_ratio's env.
+        return( div_set_ratio( evec, nset, dset, aggrf ) )
+    }
+    out <- vapply( vset, vfunc , 1.0 )
     return( out )
 }
 
-#' Weight of ego's internal incident edges over all internal edges.
+
+#' Compute vertex weights for all clusters in the given communities object.
 #'
-#' Computes the ratio between ego's non-community crossing incident edges and all of its community's
-#' internal edges. This measure is also known as ego's neighbourhood's "contribution" to its
-#' community.
+#' This function is a simple wrapper over a vertex-cluster weight function s.t. the resulting
+#' matrix will contain a a column for each cluster with a vector of vertex weights for all vertices
+#' in the graph. All vertices will have a single non-zero entry in the column corresponding to its
+#' assigned community.
 #'
-#' This can be interpreted as the 'weight' of ego's inmediate neighbourhood on its community.
+#' @param g            An igraph object.
+#' @param cms          An igraph communities object.
+#' @param contrib_func A function taking g and c as parameters to compute vertex weights. Defaults
+#'                     to graph_cluster_contrib.
+#' @param ...          Other parameters passed to the contrib_func.
 #'
-#' @param comm A communities object. The result of a cluster-finding function on g.
-#' @param g The graph.
-#' @param v A vector of vertices in g. Defualts to all vertices in g.
-#' @param attr An edge attribute to sum over the two sets. Set to NA to use cardinalities instead.
-#' @param aggr A function to combine values for the two sets. Defaults to sum.
-graph_weight_cv <- function( comm, g, v=V( g ), attr='weigth', aggr=sum ) {
-    chk_igraph( g ); chk_comm( comm )
-    intra <- !crossing( comm, g )
-    memb <- membership( comm )
-    out <- vapply( v, function( v ){
-        # ego's intra-cluster incident edges
-        nset <- ( ( E( g ) %in% incident( g, v ) ) & intra )
-        # all intra-cluster edges for ego's cluster
-        dset <- E( g )[ inc( V( g )[ memb == v ] ) ]
-        # edge attribute or edges themselves
-        evec <- if( is.na( attr ) ) E( g ) else edge_attr( g, attr )
-        # sum attribute or count edges.
-        agrf <- if( is.na( attr ) ) length else sum
-        return( set_ratio( evec, nset, dset, agrf ) )
-        return( num / den )
-    }, numeric( 1 ) )
+#' @return a matrix with as many rows as vertices in g and as many columns as cluster in cms.
+#'
+#' @export
+#' @importFrom igraph membership
+graph_cluster_contrib_matrix <- function( g, cms, contrib_func=graph_cluster_contrib, ... ) {
+    chk_igraph( g ); chk_comm( cms )
+    cwt  <- contrib_func( g, cms, ... )
+    memb <- membership( cms )
+    ks <- unique( memb )
+    out <- matrix( NA, nrow=length( V( g ) ), ncol=length( ks ) )
+    for( k in ks ) {
+        out[,k] <- ifelse( memb == k, cwt, 0 )
+    }
     return( out )
+}
+
+
+#' Cluster distances
+#'
+#' This function will compute a distance matrix for the clusters found in two different community
+#' extraction results by first computing a vector of vertex weights for each cluster in each
+#' solution and then computing a distance matrix between the clusters on both solutions based on
+#' these vertex weight vectors.
+#'
+#' The contrib_func parameter must be a weighting function of the form f( g, c ) -> v, where g is
+#' a graph, c is a communities object and the returned value v is a vector of weights for all
+#' vertices in g. See graph_cluster_contrib for an example.
+#'
+#' The dist_func parameter must be a vector distance function of the form f( v1, v2 ) -> x, where
+#' v1 and v2 are weight vectors, and x is a scalae value. See any of the similarity and divergence
+#' functions in this package for examples.
+#'
+#' If the given cms1, cms2 objects come from different graphs (i.e. from different time periods,
+#' etc), then both graphs must be supplied. If no second graph is supplied, it will be assumed
+#' that both community solutions come from the same graph.
+#'
+#' The label_format parameter must be a format string containing two "\%d" format specs, no more
+#' and no less. The first will be used for the cluster solution index (1 or 2), while the second
+#' will be used for the cluster index within each solution. See the default value for an example.
+#'
+#' @param g1           An igraph object.
+#' @param cms1         An igraph communities object, produced from g1.
+#' @param cms2         An igraph communities object, produced from g1 or from g2 if given.
+#' @param g2           An optional, second igraph object if cms2 is not from g1. NULL by default.
+#' @param label_format A format sting to name rows and cols in the returned matrix. Defaults to
+#'                     "c\%d_k\%d".
+#' @param vid          Vertex attribute name for vertex ids, required if aligning across different
+#'                     graphs.
+#' @param fill         Logical indicating how to align cluster vertex vectors if aligning across
+#'                     different graphs. TRUE (the default) means use vertex union. FALSE will use
+#'                     vertex intersection.
+#' @param contrib_func A function to compute vertex weights for a cluster.
+#' @param dist_func    A function to compute distances between vertex weight vectors.
+#' @param ...          Additional parameters passed to contrib_func.
+#'
+#' @return A matrix with as many rows as clusters in cms1 and as many columns as clusters in
+#'         cms2 with the results of the pairwise application of dist_func.
+#'
+#' @export
+graph_align_clusters <- function(
+    g1, cms1, cms2, g2=NULL,
+    label_format="c%d_k%d", vid="name", fill=TRUE,
+    contrib_func=graph_cluster_contrib_matrix, dist_func=dist_hellinger, ...
+) {
+    filt <- if( !is.null( g2 ) ) {
+        if( is.null( vertex_attr( g1, vid ) ) || is.null( vertex_attr( g2, vid ) ) ) {
+            stop( "Invalid name for vertex id attr, needed for cross-graph alignment" )
+        }
+        if( fill ) { # union
+            unique( c( vertex_attr( g1, vid ), vertex_attr( g2, vid ) ) )
+        } else { # intersection
+            vertex_attr( g1, vid ) %in% vertex_attr( g2, vid )
+        }
+    } else {
+        V( g1  ) %>% as.integer()
+    }
+
+    g2 <- if( is.null( g2 ) ) g1 else g2
+    m1 <- contrib_func( g1, cms1, ... )
+    m2 <- contrib_func( g2, cms2, ... )
+    rownames( m1 ) <- vertex_attr( g1, vid )
+    rownames( m2 ) <- vertex_attr( g2, vid )
+
+    out <- matrix( NA, nrow=ncol( m1 ), ncol=ncol( m2 ) )
+    for( i in 1:nrow( out ) ) {
+        for( j in 1:ncol( out ) ) {
+            v1 <- m1[,i][filt] %>% ifelse( is.na( . ), 0, . )
+            v1 <- m2[,j][filt] %>% ifelse( is.na( . ), 0, . )
+            out[i,j] = dist_func( v1, v2 )
+        }
+    }
+
+    if( !is.na( label_format ) ) {
+        rownames( out ) <- sprintf( label_format, 1, 1:ncol( m1 ) )
+        colnames( out ) <- sprintf( label_format, 2, 1:ncol( m2 ) )
+    }
+
+    return( out )
+}
+
+#' Create bipartite graph from a cluster alignment matrix.
+#'
+#' This function will transform a matrix containing the result of a cluster alignment call into a
+#' bipartite graph.
+#'
+#' @param m A cluster alignment matrix.
+#'
+#' @return An igraph object containing a bipartite graph
+#'
+#' @export
+#'
+#' @importFrom igraph graph_from_adjacency_matrix vertex_attr
+graph_alignment_graph <- function( m ) {
+    k1 = nrow( m ); k2 = ncol( m )
+    gm <- matrix( 0.0, nrow=k1+k2, ncol=k1+k2 )
+    rownames( gm ) <- c( rownames( m ), colnames( m ) )
+    colnames( gm ) <- c( rownames( m ), colnames( m ) )
+    gm[ 1:k1, (k1+1):ncol( gm ) ] <- m
+    gm[ (k1+1):ncol( gm ), 1:k1 ] <- t( m )
+    g <- graph_from_adjacency_matrix( gm, weighted=TRUE )
+    vertex_attr( g, "type" ) <- c( rep( TRUE, k1 ), rep( FALSE, k2 ) )
+    return( g )
 }
 
 #' @importFrom igraph is.igraph
@@ -187,7 +332,7 @@ bins_prog <- function( head, tail, pivot, range, lab, w=60 ) {
     s1 <- ( ( ( pivot - head  ) / range ) * w ) %>% floor
     s2 <- ( ( ( tail  - pivot ) / range ) * w ) %>% floor
     hi <- ( ( ( range - tail  ) / range ) * w ) %>% floor
-    message( sprintf( "[%s]: |%61s|",
+    message( sprintf( sprintf( "[%%s]: |%%%ds|", w + 1 ),
         lab,
         paste( c(
             rep( ' ', lo ),

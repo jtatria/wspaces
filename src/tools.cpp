@@ -41,4 +41,22 @@ Vec marg_avg( const SpMat &src, const Margin &margin ) {
     return ( cts.array() / cts.size() ).matrix();
 }
 
+template<>
+RowMat asRowMajor<RowMat,Mat>( Mat m, bool transpose ) {
+    return RowMat( transpose ? m.transpose() : m );
+}
 
+template<>
+RowSpMat asRowMajor<RowSpMat,SpMat>( SpMat m, bool transpose ) {
+    return RowSpMat( transpose ? m.transpose() : m );
+}
+
+template<>
+ColMat asColMajor<ColMat,Mat>( Mat m, bool transpose ) {
+    return RowMat( transpose ? m.transpose() : m );
+}
+
+template<>
+ColSpMat asColMajor<ColSpMat,SpMat>( SpMat m, bool transpose ) {
+    return RowSpMat( transpose ? m.transpose() : m );
+}

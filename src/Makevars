@@ -1,30 +1,32 @@
-R_INC = /usr/share/R/include
-RCPP_INC      = /home/jta/R/x86_64-pc-linux-gnu-library/3.3/Rcpp/include
-RCPPEIGEN_INC = /home/jta/R/x86_64-pc-linux-gnu-library/3.3/RcppEigen/include
-
-CUDA_HOME = /usr/local/cuda
-CUDA_INC  = $(CUDA_HOME)/include
-CUDA_LIB  = $(CUDA_HOME)/lib64
-
-PKG_LIBS    += -L /home/jta/src/local/sparse-matrix -lspm -L $(CUDA_LIB) -lcudart
+PKG_LIBS     += -L /home/jta/src/local/sparse-matrix -lspm
+PKG_LIBS     += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
 PKG_CPPFLAGS += -I../inst/include
 PKG_CXXFLAGS += -std=gnu++11
+CXX_STD=CXX11
 
-NVCC       = $(CUDA_HOME)/bin/nvcc
-NVCC_FLAGS = -Xcompiler "-fPIC" -gencode arch=compute_35,code=sm_35 -std=c++11
-
-### Define objects
-cu_sources := $(wildcard *cu)
-cu_objects := $(patsubst %.cu, %.o,$(cu_sources))
-
-cpp_sources := $(wildcard *.cpp)
-cpp_objects := $(patsubst %.cpp, %.o, $(cpp_sources))
-
-OBJECTS = $(cu_objects) $(cpp_objects)
-
-all : wspaces.so
-
-wspaces.so: $(OBJECTS)
-
-%.o: %.cu $(cu_sources)
-	$(NVCC) $(NVCC_FLAGS) -I$(CUDA_INC) -I$(R_INC) -I$(RCPP_INC) -I$(RCPPEIGEN_INC) $< -c
+#R_INC = /usr/share/R/include
+#RCPP_INC      = $(shell ${R_HOME}/bin/Rscript -e 'file.path( find.package( "Rcpp" ), "include" )')
+#RCPPEIGEN_INC = $(shell ${R_HOME}/bin/Rscript -e 'file.path( find.package( "RcppEigen" ), "include" )')
+#PKG_LIBS += -L $(CUDA_LIB) -lcudart
+#CUDA_HOME = /usr/local/cuda
+#CUDA_INC  = $(CUDA_HOME)/include
+#CUDA_LIB  = $(CUDA_HOME)/lib64
+#
+#NVCC       = $(CUDA_HOME)/bin/nvcc
+#NVCC_FLAGS = -Xcompiler "-fPIC" -std=c++11 --expt-extended-lambda --expt-relaxed-constexpr -Wno-deprecated-gpu-targets -g -G
+#
+#### Define objects
+#cu_sources := $(wildcard *cu)
+#cu_objects := $(patsubst %.cu, %.o,$(cu_sources))
+#
+#cpp_sources := $(wildcard *.cpp)
+#cpp_objects := $(patsubst %.cpp, %.o, $(cpp_sources))
+#
+#OBJECTS = $(cu_objects) $(cpp_objects)
+#
+#all : wspaces.so
+#
+#wspaces.so: $(OBJECTS)
+#
+#%.o: %.cu $(cu_sources)
+#	$(NVCC) $(NVCC_FLAGS) -I$(CUDA_INC) -I$(R_INC) -I$(RCPP_INC) -I$(RCPPEIGEN_INC) $< -c

@@ -1,0 +1,5 @@
+cooc <- read_cooccur( "~/desktop/obo/data/cooc.bin" )
+rownames( cooc ) <- paste( "row", 1:nrow( cooc ), sep="_" )
+colnames( cooc ) <- paste( "col", 1:nrow( cooc ), sep="_" )
+m <- simdiv( cooc[1:100,1:100] )
+m <- simdiv( cooc[1:100,1:100], inner=FALSE )

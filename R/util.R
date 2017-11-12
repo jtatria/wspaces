@@ -116,19 +116,19 @@ classify <- function( x, k, factor=TRUE, labels=NA ) {
 
 #' Ratio between sets.
 #'
-#' Computes a ratio of the given aggregation function over the elements of the given vector for
-#' members of the given numerator set and the elements of the given vector for the given denominator
-#' set.
+#' Computes a ratio of the given aggregation functions over the elements of the given vector for
+#' members of the given numerator set and the elements of the given vector for members of the given
+#' denominator set, i.e.: nfunc( x[nset] ) / dfunc( x[dset] ).
 #'
 #' This function can be used to implement many different measures of similarity/divergence not
 #' included in this package. It is also used for community/vertex weighting function in the wspaces'
 #' graph module.
 #'
 #' @param x     A vector from where to select inputs to the given aggregation function.
-#' @param nset  A vector representing a subset of x over which to apply the given function for the
-#'              numerator value.
-#' @param dset  A vector representing a subset of x over which to apply the given function for the
-#'              denominator value.
+#' @param nset  A logical or index vector representing a subset of x over which to apply the given
+#'              function for the numerator value.
+#' @param dset  A logical or index vector representing a subset of x over which to apply the given
+#'              function for the denominator value.
 #' @param nfunc An aggregation function like sum or length for the numerator set. Defaults to
 #'              length.
 #' @param dfunc An aggregation function like sum or length for the denominator set. Defaults to
@@ -139,15 +139,25 @@ classify <- function( x, k, factor=TRUE, labels=NA ) {
 #'
 #' @export
 #' @importFrom magrittr %>%
-div_setratio <- function( x, nset, dset, nfunc=length, dfunc=nfunc ) {
-    if( is.logical( nset ) && length( nset ) != length( x ) )
-        warning( "Recycling short logical vector for nset" )
-    if( is.logical( dset ) && length( dset ) != length( x ) )
-        warning( "Recycling short logical vector for dset" )
-    if( is.integer( nset ) && max( nset ) > length( x ) )
-        stop( 'Invalid index vector for nset (max nset oob)' )
-    if( is.integer( dset ) && max( dset ) > length( x ) )
-        stop( 'Invalid index vector for dset (max nset oob)' )
-    return( ( x[ nset ] %>% nfunc ) / ( x[ dset ] %>% dfunc ) )
+div_set_ratio <- function( x, nset, dset, nfunc=length, dfunc=nfunc ) {
+    if( is.logical( nset ) && length( nset ) != length( x ) ) {
+        #warning( "Recycling short logical vector for nset" )
+        stop( "logical vector is too short" )
+    }
+    if( is.logical( dset ) && length( dset ) != length( x ) ) {
+        #warning( "Recycling short logical vector for dset" )
+        stop( "logical vector is too short" )
+    }
+    if( is.integer( nset ) && max( nset ) > length( x ) ) {
+        stop( 'Invalid index vector for nset (max index oob)' )
+    }
+    if( is.integer( dset ) && max( dset ) > length( x ) ) {
+        stop( 'Invalid index vector for dset (max index oob)' )
+    }
+    # hack pending https://github.com/igraph/igraph/issues/1038
+    nset <- if( is.logical( nset ) ) which( nset ) else nset
+    dset <- if( is.logical( dset ) ) which( dset ) else dset
+    # /hack
+    return( ( nfunc( x[ nset ] ) ) / ( dfunc( x[ dset ] ) ) )
 }
 

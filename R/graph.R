@@ -142,40 +142,17 @@ graph_connected <- function( g, tol=1, cmps=components( g ) ) {
 #'         contribution measure values for each vertex in its assigned community.
 #'
 #' @export
-#' @importFrom igraph crossing membership incident
+#' @importFrom igraph membership as_adj
 graph_cluster_contrib <- function(
     g, c, mode=c('cv','vc'), vset=V( g ),
-    attr=ifelse( is.weighted( g ), 'weight', NA ), aggr=ifelse( is.na( attr ), length, sum )
+    weight='weight', aggr=ifelse( is.na( attr ), length, sum )
 ) {
     chk_igraph( g ); chk_comm( c ); mode=match.arg( mode );
-    intra  <- !crossing( c, g )
-    membs  <- membership( c )
-    evec   <- if( is.na( attr ) ) {
-        E( g )
-    } else if( !is.null( edge_attr( g, attr ) ) ) {
-        edge_attr( g, attr )
-    } else {
-        warning( sprintf(
-            "%s edge attr missing from graph. treating as unweighted, counting edges", attr
-        ) )
-        attr <- NA
-        E( g )
-    }
-    nfunc <- function( v ) ( ( E( g ) %in% incident( g, v ) ) & intra )
-    dfunc <- switch( mode,
-        vc = function( v ) ( ( E( g ) %in% incident( g, v ) ) ),
-        cv = function( v ) ( E( g ) %in% E( g )[ .inc( V( g )[ membs == membs[v] ] ) ] )
-    )
-    aggrf <- if( is.na( attr ) ) length else aggr
-    vfunc <- function( v ) { # div_set_ratio( evec, nset, dset, aggrf )
-        nset = nfunc( v ) # this must be created in advance, because nfunc and dfunc do not exist
-        dset = dfunc( v ) # in div_set_ratio's env.
-        return( div_set_ratio( evec, nset, dset, aggrf ) )
-    }
-    out <- vapply( vset, vfunc , 1.0 )
+    k   <- igraph::membership( c )
+    adj <- igraph::as_adj( g, type='both', attr=weight, sparse=FALSE )
+    out <- switch( match.arg( mode ), cv=c2v_contrib( adj, k ), vc=v2c_contrib( adj, k ) )
     return( out )
 }
-
 
 #' Compute vertex weights for all clusters in the given communities object.
 #'
@@ -205,7 +182,6 @@ graph_cluster_contrib_matrix <- function( g, cms, contrib_func=graph_cluster_con
     }
     return( out )
 }
-
 
 #' Cluster distances
 #'

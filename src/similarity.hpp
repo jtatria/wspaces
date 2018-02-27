@@ -4,11 +4,6 @@
 #include "wspaces_types.hpp"
 #include "tools.hpp"
 
-// Change implementation compilation here
-#define IMPL_CPU 0
-#define IMPL_GPU 1
-#define INNERP_IMPL IMPL_CPU
-
 typedef F<Vec,Vec,ind,ind > SimFunc;
 
 enum Sim {
@@ -19,31 +14,28 @@ enum Sim {
     JS_DIV    = 4,
     BHATTA    = 5,
     HELLINGER = 6,
+    JACCARD   = 7,
 };
 
 //' @export
 // [[Rcpp::export]]
-double sim_additive( Vec vi, Vec vj, ind i, ind j ) {
-    double ii = vi( i ), ij = vi( j ), ji = vj( i ), jj = vj( j );
-    double num = ( vi.array() > 0 && vj.array() > 0 ).select( vi, 0 ).sum() - ( ii + ij + ji + jj );
-    double den = vi.sum() - ( ii + ij );
+double sim_additive( const Vec& vi, const Vec& vj, ind i, ind j ) {
+    double num = ( vi.array() > 0 && vj.array() > 0 ).select( ( vi + vj ), 0 ).sum();
+    double den = vi.sum();
     return num / den;
 }
 
 //' @export
 // [[Rcpp::export]]
-double sim_dweighted( Vec vi, Vec vj, ind i, ind j ) {
-    double ii = vi( i ), ij = vi( j ), ji = vj( i ), jj = vj( j );
-    double mi = std::min<double>( ii, ji );
-    double mj = std::min<double>( ji, jj );
-    double num = ( vi.cwiseMin( vj ).array().sum() ) - ( mi + mj );
-    double den = vi.sum() - ( ii + ij );
+double sim_dweighted( const Vec& vi, const Vec& vj, ind i, ind j ) {
+    double num = ( vi.cwiseMin( vj ).array().sum() );
+    double den = vi.sum();
     return num / den;
 }
 
 //' @export
 // [[Rcpp::export]]
-double sim_cosine( Vec vi, Vec vj ) {
+double sim_cosine( const Vec& vi, const Vec& vj ) {
     if( vi.isZero() || vj.isZero() ) return 0;
     double num = vi.dot( vj );
     double den = vi.norm() * vj.norm();
@@ -63,7 +55,7 @@ double sim_cosine( Vec vi, Vec vj ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double div_kulback_leibler( Vec vi, Vec vj, bool coerce=false ) {
+double div_kulback_leibler( const Vec& vi, const Vec& vj, bool coerce=false ) {
     Vec pi = vi.array() / vi.sum();
     Vec pj = vj.array() / vj.sum();
     return ( ( pi.array() / pj.array() ).log() * pi.array() ).sum();
@@ -88,7 +80,7 @@ double div_kulback_leibler( Vec vi, Vec vj, bool coerce=false ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double div_jensen_shannon( Vec vi, Vec vj, bool coerce=false ) {
+double div_jensen_shannon( const Vec& vi, const Vec& vj, bool coerce=false ) {
     Vec m = ( vi + vj ) / 2.0;
     double kl_vi = div_kulback_leibler( vi, m );
     double kl_vj = div_kulback_leibler( vj, m );
@@ -110,7 +102,7 @@ double div_jensen_shannon( Vec vi, Vec vj, bool coerce=false ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double coef_bhattacharyya( Vec vi, Vec vj ) {
+double coef_bhattacharyya( const Vec& vi, const Vec& vj ) {
     Vec pi = vi.array() / vi.sum();
     Vec pj = vj.array() / vj.sum();
     return ( ( pi.array() * pj.array() ).sqrt() ).sum();
@@ -137,7 +129,7 @@ double coef_bhattacharyya( Vec vi, Vec vj ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double div_bhattacharyya( Vec vi, Vec vj ) {
+double div_bhattacharyya( const Vec& vi, const Vec& vj ) {
     double coef = coef_bhattacharyya( vi, vj );
     return std::log<double>( coef ).real() * -1;
 }
@@ -158,13 +150,21 @@ double div_bhattacharyya( Vec vi, Vec vj ) {
 //' @param p A frequency or probability vector. Coerced to prob by p / sum( p )
 //' @param q A frequency or probability vector. Coerced to prob by q / sum( q )
 //'
-//' @return a scalar value equal to the Hellinger divergence between p and q.
+//' @return a scalar value equal to the Hellinger distance between p and q.
 //'
 //' @export
 // [[Rcpp::export]]
-double dist_hellinger( Vec vi, Vec vj ) {
+double dist_hellinger( const Vec& vi, const Vec& vj ) {
     double bha = coef_bhattacharyya( vi, vj );
     return std::sqrt<double>( 1 - bha ).real();
+}
+
+//' @export
+// [[Rcpp::export]]
+double dist_jaccard( const Vec& vi, const Vec& vj ) {
+    double num = ( vi.cwiseMin( vj ) ).sum();
+    double den = ( vi.cwiseMax( vj ) ).sum();
+    return( num / den );
 }
 
 inline bool symmetric( const Sim sim ) {
@@ -176,32 +176,42 @@ inline bool symmetric( const Sim sim ) {
         case JS_DIV    : return true;
         case BHATTA    : return true;
         case HELLINGER : return true;
+        case JACCARD   : return true;
         default : Rcpp::stop( "Unknown sim/div function requested" );
     }
 }
 
+//' @export
+// [Rcpp::export]]
+bool simdiv_symm( int mode ) {
+    return( symmetric( static_cast<Sim>( mode ) ) );
+}
+
 inline SimFunc get_func( const Sim sim ) {
     switch( sim ) {
-        case ADDITIVE  : return []( Vec vi, Vec vj, ind i, ind j ) -> double {
+        case ADDITIVE  : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
             return sim_additive( vi, vj, i, j );
         };
-        case DWEIGHTED : return []( Vec vi, Vec vj, ind i, ind j ) -> double {
+        case DWEIGHTED : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
             return sim_dweighted( vi, vj, i, j );
         };
-        case COSINE    : return []( Vec vi, Vec vj, ind i, ind j ) -> double {
+        case COSINE    : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
             return sim_cosine( vi, vj );
         };
-        case KL_DIV    : return []( Vec vi, Vec vj, ind i, ind j ) -> double {
+        case KL_DIV    : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
             return div_kulback_leibler( vi, vj );
         };
-        case JS_DIV    : return []( Vec vi, Vec vj, ind i, ind j ) -> double {
+        case JS_DIV    : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
             return div_jensen_shannon( vi, vj );
         };
-        case BHATTA    : return []( Vec vi, Vec vj, ind i, ind j ) -> double {
+        case BHATTA    : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
             return div_bhattacharyya( vi, vj );
         };
-        case HELLINGER : return []( Vec vi, Vec vj, ind i, ind j ) -> double {
+        case HELLINGER : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
             return dist_hellinger( vi, vj );
+        };
+        case JACCARD   : return []( const Vec& vi, const Vec& vj, ind i, ind j ) -> double {
+            return dist_jaccard( vi, vj );
         };
         default : Rcpp::stop( "Unknown sim/div function requested" );
     }

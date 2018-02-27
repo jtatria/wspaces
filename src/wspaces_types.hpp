@@ -14,6 +14,8 @@ typedef Rcpp::IntegerVector RVecI;
 typedef Eigen::Index ind;
 typedef Eigen::MatrixXd Mat;
 typedef Eigen::VectorXd Vec;
+typedef Eigen::VectorXi Ivec;
+typedef Eigen::MatrixXi Imat;
 typedef Eigen::SparseMatrix<double> SpMat;
 typedef Eigen::SparseVector<double> SpVec;
 typedef Eigen::Map<SpMat> MSpMat;

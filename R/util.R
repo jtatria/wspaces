@@ -114,50 +114,60 @@ classify <- function( x, k, factor=TRUE, labels=NA ) {
     return( clz )
 }
 
-#' Ratio between sets.
+#' Jaccard coefficients and other set ratios.
 #'
 #' Computes a ratio of the given aggregation functions over the elements of the given vector for
 #' members of the given numerator set and the elements of the given vector for members of the given
-#' denominator set, i.e.: nfunc( x[nset] ) / dfunc( x[dset] ).
+#' denominator set, i.e.: s1func( x[s1] ) / s2func( x[s2] ).
 #'
 #' This function can be used to implement many different measures of similarity/divergence not
-#' included in this package. It is also used for community/vertex weighting function in the wspaces'
+#' included in this package. It is also used for cluster-vertex contribution scores in the wspaces'
 #' graph module.
 #'
-#' @param x     A vector from where to select inputs to the given aggregation function.
-#' @param nset  A logical or index vector representing a subset of x over which to apply the given
-#'              function for the numerator value.
-#' @param dset  A logical or index vector representing a subset of x over which to apply the given
-#'              function for the denominator value.
-#' @param nfunc An aggregation function like sum or length for the numerator set. Defaults to
-#'              length.
-#' @param dfunc An aggregation function like sum or length for the denominator set. Defaults to
-#'              nfunc.
+#' If no second set is given, it is taken to be the universe, i.e. the entirety of x.
 #'
-#' @return A scalar value equal to the value of the given function applied to the elements of nset
-#'         over the value of the given funciton applied to the elements of dset.
+#' If \code{jaccard} is TRUE, then the ratio is computed as per the Jaccard index:
+#' \eqn{J = f(A \cap B) / f(A \cup B)}. If FALSE, the value is computed as a simple ratio 
+#' \eqn{f( A ) / f( B )}.
+#'
+#' @param x      A vector from where to select inputs to the given aggregation function.
+#' @param s1     A logical or index vector representing a subset of x over which to apply the given
+#'               function for the numerator value.
+#' @param s2     A logical or index vector representing a subset of x over which to apply the given
+#'               function for the denominator value. Defaults to \eqn{U}, i.e. all of x.
+#' @param s1func An aggregation function like sum or length for the first set. Defaults to
+#'               length.
+#' @param s2fnuc An aggregation function like sum or length for the second set. Defaults to
+#'               s1func, and there is seldom any reason to pass a different one.
+#'
+#' @param jaccard Logical. Compute a Jaccard distance. See details.
+#'
+#' @return A scalar value equal to the value of the given function applied to the elements of s1
+#'         over the value of the given funciton applied to the elements of s2.
 #'
 #' @export
 #' @importFrom magrittr %>%
-div_set_ratio <- function( x, nset, dset, nfunc=length, dfunc=nfunc ) {
-    if( is.logical( nset ) && length( nset ) != length( x ) ) {
-        #warning( "Recycling short logical vector for nset" )
-        stop( "logical vector is too short" )
+div_set_ratio <- function( x, s1, s2=rep( TRUE, length( x ) ), s1func=length, s2func=s1func, jaccard=FALSE ) {
+    if( is.logical( s1 ) && length( s1 ) != length( x ) ) {
+        #warning( "Recycling short logical vector for s1" )
+        stop( "logical vector is too short for s1" )
     }
-    if( is.logical( dset ) && length( dset ) != length( x ) ) {
-        #warning( "Recycling short logical vector for dset" )
-        stop( "logical vector is too short" )
+    if( is.logical( s2 ) && length( s2 ) != length( x ) ) {
+        #warning( "Recycling short logical vector for s2" )
+        stop( "logical vector is too short for s2" )
     }
-    if( is.integer( nset ) && max( nset ) > length( x ) ) {
-        stop( 'Invalid index vector for nset (max index oob)' )
+    if( is.integer( s1 ) && max( s1 ) > length( x ) ) {
+        stop( 'Invalid index vector for s1 (max index oob)' )
     }
-    if( is.integer( dset ) && max( dset ) > length( x ) ) {
-        stop( 'Invalid index vector for dset (max index oob)' )
+    if( is.integer( s2 ) && max( s2 ) > length( x ) ) {
+        stop( 'Invalid index vector for s2 (max index oob)' )
     }
-    # hack pending https://github.com/igraph/igraph/issues/1038
-    nset <- if( is.logical( nset ) ) which( nset ) else nset
-    dset <- if( is.logical( dset ) ) which( dset ) else dset
+    if( jaccard ) {
+        stop( 'Not implemented' ) # TODO
+    }
+    # TODO: hack pending https://github.com/igraph/igraph/issues/233
+    s1 <- if( is.logical( s1 ) ) which( s1 ) else s1
+    s2 <- if( is.logical( s2 ) ) which( s2 ) else s2
     # /hack
-    return( ( nfunc( x[ nset ] ) ) / ( dfunc( x[ dset ] ) ) )
+    return( ( s1func( x[ s1 ] ) ) / ( s2func( x[ s2 ] ) ) )
 }
-

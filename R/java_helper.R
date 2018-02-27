@@ -216,7 +216,7 @@ obo_sample <- function( obo, sample=c('testimony','legal','trials'), negate=FALS
 #' @export
 #' @importFrom Matrix sparseMatrix rowSums colSums
 #' @importFrom rJava .jinit
-obo_count_cooc <- function( obo, ds=obo$docSample(), shrink=TRUE ) {
+obo_count_cooc <- function( obo, ds=obo$docSample(), shrink=FALSE ) {
     .jinit()
     chk_clz( obo, OBO_CLZ ); chk_clz( ds, DS_CLZ )
     prog <- J( RHLP_CLZ, "report" )

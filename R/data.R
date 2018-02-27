@@ -21,6 +21,7 @@ comp_t <- object.size( c( complex( 1 ), complex( 1 ) ) ) - object.size( complex(
 real_t <- object.size( c( 1.0, 1.0 ) ) - object.size( 1.0 )
 
 # io -----------------------------------------------------------------------------------------------
+
 #' Load corpus data from the given directory.
 #'
 #' Loads corpus data from the files found in the given directory. Corpus data includes a lexicon
@@ -113,33 +114,66 @@ load_corpus <- function(
 }
 
 #' @export
-load_epochs <- function(
-    dir=getwd(), epochs_dir='epochs', lxcn=NULL,
-    frequencies="freq.dsv", pos_counts="posc.dsv", cooccur="cooc.bin",
+load_sample <- function(
+    dir, lxcn=NULL,
+    lxcn.file='lxcn.dsv', freq.file='freq.dsv', posc.file='posc.dsv', cooc.file='cooc.bin',
     quiet=FALSE, attach=FALSE, env=.GlobalEnv
 ) {
-    if( !quiet ) message( sprintf( "Loading wspaces corpus epoch data from %s", dir ) )
-    edir <- file.path( dir, epochs_dir )
-    edirs <- list.dirs( edir, recursive=FALSE )
-    epochs <- list()
-for( epoch in edirs ) {
-        ename <- gsub( ".*/", "", epoch )
-        if( !quiet ) message( sprintf( "Loading data for epoch %s", ename ) )
-        epochs[[ename]]$freq <- read_frequencies( file.path( epoch, frequencies ) )
-        epochs[[ename]]$posc  <- read_pos_counts( file.path( epoch, pos_counts ) )
-        if( file.exists( file.path( epoch, cooccur ) ) ) {
-            epochs[[ename]]$cooc  <- read_cooccur( file.path( epoch, cooccur ), lxcn=lxcn )
-        }
+    if( !quiet ) message( sprintf( 'Loading corpus sample data from %s', dir ) )
+    add.lxcn <- FALSE
+    if( is.null( lxcn ) ) {
+        lxcn.p <- file.path( dir, lxcn.file )
+        if( !file.exists( lxcn.p ) ) stop( sprintf( 'Can\'t read lexicon from %s: file not found', lxcn.p ) )
+        message( sprintf( 'Loading sample lexicon from %s', lxcn.p ) )
+        lxcn <- read_lexicon( lxcn.p )
+        add.lxcn <- TRUE
     }
-    if( attach ) list2env( epochs, envir=env )
-    return( epochs )
+    freq <- read_frequencies( file.path( dir, freq.file ) )
+    posc <- read_pos_counts( file.path( dir, posc.file ) )
+    cooc <- read_cooccur( file.path( dir, cooc.file ), lxcn=lxcn )
+    out <- list( freq=freq, posc=posc, cooc=cooc, dir=dir )
+    if( add.lxcn ) out$lxcn <- lxcn
+    class( out ) <- 'corpus_sample'
+    if( attach ) list2env( out, envir=env )
+    return( out )
 }
+
+#' @export
+load_sample_set <- function(
+    dir=getwd(), lxcn=NULL,
+    lxcn.file='lxcn.dsv', freq.file='freq.dsv', posc.file='posc.dsv', cooc.file='cooc.bin',
+    quiet=FALSE, attach=FALSE, env=.GlobalEnv
+) {
+    if( !quiet ) message( sprintf( "Loading corpus samples from %s", dir ) )
+    if( is.null( lxcn ) ) {
+        lxcn.p <- file.path( dir, lxcn.file )
+        if( !file.exists( lxcn.p ) ) stop( sprintf( 'Can\'t read lexicon from %s: file not found', lxcn.p ) )
+        message( sprintf( 'Loading sample lexicon from %s', lxcn.p ) )
+        lxcn <- read_lexicon( lxcn.p )
+        add.lxcn <- TRUE
+    }
+    sdirs <- list.dirs( dir, recursive=FALSE )
+    samples <- list()
+    for( sdir in sdirs ) {
+        sname <- gsub( ".*/", "", sdir )
+        samples[[sname]] <- load_sample( sdir, lxcn=lxcn, quiet=quiet, attach=FALSE )
+    }
+    samples$lxcn <- lxcn
+    class( samples ) <- 'corpus_sample_set'
+    if( attach ) list2env( samples, envir=env )
+    return( samples )
+}
+
+
+# low-level io --------------------------------------------------------------------------------
 
 #' Wrapper for \code{\link{data.table::fread}} for lexical datasets.
 #'
 #' This function is used to load all lexical datasets in order to enforce all conventions assumed
 #' in the rest of the lexical dataset manipulations in this package. See
 #' \code{\link{lexical_dataset}} for details.
+#'
+#' TODO: get rid of data.table::fread
 #'
 #' @param file   Location of the file containing the lexical dataset to load.
 #' @param sep    Column separator. Defaults to '@'.
@@ -149,6 +183,7 @@ for( epoch in edirs ) {
 #' @return a data.frame constructed from the loaded file, with columns and keys set in the
 #'         appropriate way for further lexical analysis.
 #'
+#' @export
 #' @importFrom data.table fread
 read_dataset <- function( file, sep='@', header=TRUE, nas=0 ) {
     d <- data.table::fread( file, sep=sep, header=header, quote='', data.table = FALSE )
@@ -202,13 +237,13 @@ read_lexicon <- function( file, header=TRUE, sep='@' ) {
 #'         partition.
 #'
 #' @export
-read_frequencies <- function( file, header=TRUE, sep='@', lxcn=NULL ) {
+read_frequencies <- function( file, header=TRUE, sep='@' ) {
     if( !file.exists( file ) ) stop( sprintf( "%s: file not found", file ) )
     d <- read_dataset( file, sep=sep, header=header )
     return( d )
 }
 
-#' Read POS count data from DSV file.
+#' Read POS classes count data from DSV file.
 #'
 #' Reads POS count data from a DSV file. POS count data is recorded on disk as a series
 #' of records containings each term's string form, followed by one column for each major POS group
@@ -241,8 +276,8 @@ read_pos_counts <- function( file, header=TRUE, sep='@', drop=TRUE ) {
 #' number.
 #'
 #' The default corpus backend implementation uses a term-term context definition and stores
-#' cooccurrences in a rank-2 tensor, using long integers for coordinates and double precision
-#' floats for values.
+#' cooccurrences in a rank-2 tensor (i.e. a matrix), using long integers for coordinates and double
+#' precision floats for values.
 #'
 #' The specific relationship between values in the returned tensor and the actual
 #' distributional patterns for each term depends on the corpus backend cooccurrence
@@ -328,7 +363,6 @@ read_vectors <- function(
     return( d )
 }
 
-
 # datasets -----------------------------------------------------------------------------------------
 #' Enforce internal conventions for lexical datasets.
 #'
@@ -353,24 +387,25 @@ lexical_dataset <- function( d ) {
     return( d )
 }
 
-
 #' Join lexical datasets.
 #'
 #' wspaces lexical datasets maintain row identity in rownames. This function wraps joining
 #' operations to enforce wspaces rowname conventions.
 #'
 #' If no key names are given, joins are performed on the rownames of the given data sets. If a key
-#' names is given for either d1 or d2, the column named with that key name is used for the
+#' name is given for either d1 or d2, the column named with that key name is used for the
 #' corresponding data set.
 #'
 #' By default, the effective join key (rownames or named vector) will be added as rownames in the
 #' results data frame, unless the no.rn parameter is TRUE or its values in the result are not
 #' unique, which will result in a warning.
 #'
-#' The ode parameter indicates the kind of join: 'left' or 'right' will will return all rows in d1
+#' The mode parameter indicates the kind of join: 'left' or 'right' will return all rows in d1
 #' or d2 with all columns from d1 and d2. 'inner' will return only the intersection of both d1 and
 #' d2 with columns from d1 and d2. 'full' will return the union of d1 and d2, with columns from d1
 #' and d2. The default is 'left': add data from d2 to all rows in d1.
+#' 
+#' TODO: get rid of dplyr.
 #'
 #' @param d1    A lexical dataset.
 #' @param d2    A lexical dataset.
@@ -411,7 +446,7 @@ lexical_join <- function(
 
 #' Lexical sampling.
 #'
-#' Extracts samples from a TF vector such that the sampled terms account for the given theta
+#' Extracts samples from a TF vector such that the sampled terms account for the given \emph{theta}
 #' proportion of the total mass in the TF vector.
 #'
 #' This function assumes that the TF vector is sorted in descending frequency following Zipf's
@@ -420,9 +455,9 @@ lexical_join <- function(
 #'
 #' This strategy will fail miserably if a) the given TF vector is not sorted in descending order
 #' (though it can be sorted internally) or b) the entries in the given vector do not follow Zipf's
-#' law. Use accordingly.
+#' law (i.e. do not correspond to natural term frequencies). Use accordingly.
 #'
-#' This function also allows for censoring the given TF vector according a filtering vector. In
+#' This function also allows for censoring the given TF vector according to a filtering vector. In
 #' this case, the 'univ' parameter controls whether mass coverage should be computed against the
 #' mass of the full tf vector, or against the mass of the censored tf vector. Setting 'univ' to
 #' TRUE will result in larger samples, as a higher number of elements is needed to account for the
@@ -438,12 +473,13 @@ lexical_join <- function(
 #'               defaults to FALSE (compute against censored tf).
 #' @param sort   Logical indicating whether the given vector should be resorted. Use with caution,
 #'               as most lexical sets in wspaces assume a fixed sort order.
+#' @param value  Logical. Return term names instead of a logical vector. Requires 'tf' to be named.
 #'
 #' @return A logical vector \emph{of the same length as tf} indicating whether the corresponding
 #'         entry in tf is included in the sample or not.
 #'
 #' @export
-lexical_sample <- function( tf, filter=NULL, theta=.95, univ=FALSE, sort=FALSE ) {
+lexical_sample <- function( tf, filter=NULL, theta=.95, univ=FALSE, sort=FALSE, value=FALSE ) {
     if( theta >= 1 || theta <= 0 ) stop( sprintf(
         "Invalid theta %s given: Must be between 0 and 1 (both excluded)"
     ) )
@@ -454,7 +490,7 @@ lexical_sample <- function( tf, filter=NULL, theta=.95, univ=FALSE, sort=FALSE )
         else filter
     } else rep( TRUE, length( tf ) )
     cum <- cumsum( ifelse( filter, tf, 0 ) ) / sum( if( univ ) tf else tf[filter] )
-    return( cum <= theta )
+    return( ( cum <= theta ) & filter )
 }
 
 #' Extract term data from the given lexical dataset.

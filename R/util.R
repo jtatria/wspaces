@@ -127,7 +127,7 @@ classify <- function( x, k, factor=TRUE, labels=NA ) {
 #' If no second set is given, it is taken to be the universe, i.e. the entirety of x.
 #'
 #' If \code{jaccard} is TRUE, then the ratio is computed as per the Jaccard index:
-#' \eqn{J = f(A \cap B) / f(A \cup B)}. If FALSE, the value is computed as a simple ratio 
+#' \eqn{J = f(A \cap B) / f(A \cup B)}. If FALSE, the value is computed as a simple ratio
 #' \eqn{f( A ) / f( B )}.
 #'
 #' @param x      A vector from where to select inputs to the given aggregation function.
@@ -171,3 +171,46 @@ div_set_ratio <- function( x, s1, s2=rep( TRUE, length( x ) ), s1func=length, s2
     # /hack
     return( ( s1func( x[ s1 ] ) ) / ( s2func( x[ s2 ] ) ) )
 }
+
+#' Extract marginals from global cooccurrence counts for sample cooccurrence counts
+#'
+#' Sparse matrices for corpus samples usually do not have the same dimension as global matrices,
+#' because they do not store trailing zeros.
+#'
+#' Thus, the extraction of global marginals for e.g. weighting, requires resizing marginal vectors
+#' to ensure that they are the same dimension as the sample matrix, i.e. as long as the extent of
+#' the last row or column with non-zero values in the sample matrix, which will usually not be the
+#' same as the last row or column in a global matrix.
+#'
+#' This function offers a measure of consistency for this operation for all corpus samples.
+#'
+#' @param s    A cooccurrence matrix for a corpus sample.
+#' @param u    The global corpus cooccurrence matrix.
+#' @param rank The rank to extract marginals on.
+#' @param prob Logical. Transform marginal counts to a probability vector. Defults to TRUE.
+#'
+#' @return A row or column marginal vector with counts or probabilities of the correct dimension for
+#'         use as a row or column marginal vector for weighting s
+#'
+#' @export
+#' @importFrom Matrix rowSums colSums
+sample_margins <- function( s, u, rank=c('row','col'), prob=TRUE ) {
+    rank = match.arg( rank )
+    mrg  <- if( rank == 'row' ) Matrix::rowSums( u ) else Matrix::colSums( u )
+    fltr <- if( rank == 'row' ) rownames( s ) else colnames( s )
+    mrg  <- mrg[ names( mrg ) %in% fltr ]
+    mrg  <- if( prob ) mrg / sum( u ) else mrg
+    return( mrg )
+}
+
+#' @rdname weight_cooc
+#' @param u   The global corpus cooccurrence matrix.
+#' @param ... Additional parameters passed to \link{weight_cooc}.
+#' @export
+weight_sample <- function( m, u=m, ... ) {
+    r_mrg <- sample_margins( s, u, rank='row' )
+    c_mrg <- sample_margins( s, u, rank='col' )
+    wcooc <- weight_cooc( s, r_mrg, c_mrg, ... )
+    return( wcooc )
+}
+

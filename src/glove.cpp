@@ -13,7 +13,7 @@ Glove::Glove(
 }
 
 void Glove::epoch() {
-    // da magic
+    // TODO: port external C code to C++
 }
 
 Mat Glove:: w(){

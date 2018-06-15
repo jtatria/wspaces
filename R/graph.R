@@ -18,6 +18,173 @@
 ####                 Functions for creating and manipulating semantic networks                  ####
 ####################################################################################################
 
+
+#' Semantic Networks
+#'
+#' This function wraps a number of lower-level functions to generate semantic networks consistently
+#' with a given set of parameters.
+#'
+#' In the simplest case, it will construct a first-order network using the given value of \code{X}
+#' as an adjacency matrix, for all terms indicated by the given lexical sampling vector \code{ls}.
+#'
+#' If \code{x2_mode} is not \code{NA} or a value is given for \code{X2}, it will also compute a
+#' higher order semantic network, either using the given value of \code{x2_mode} to compute a
+#' similarity matrix calling \link{simdiv} or using the given \code{X2} value directly. If the
+#' higher order matrix is computed internally, an optional \code{fs} vector can be used to select
+#' a subset of available features, greatly speeding up computation at the cost of dropping some
+#' features from consideration.
+#'
+#' In all cases this function will apply the relevant filtering for e.g. lexical sampling and
+#' call \link{stitch} to construct an igraph graph object, then prune the resulting network up to
+#' the given \code{tol} value by calling \link{prune} and detect communities over the pruned
+#' network by calling the given \code{clust_func} clustering function.
+#'
+#' @param X       A cooccurrence matrix.
+#' @param ls      A logical vector for lexical sampling. See \link{lexical_sample}.
+#' @param fs      A logical vector for feature sampling. Defaults to all features.
+#' @param tol     Integer. Connectivity tolerance for prunning. See \link{prune}.
+#' @param x2_mode Integer. Mode for second-order network. See \link{simdiv} for possible values.
+#'                Set to \code{NA} to skip higher-order network construction.
+#' @param td      Optional term data to add as vertex attributes.
+#' @param X2      A higher-order similarity matrix. Defaults to \code{NULL}. If present, a
+#'                higher-order network will be constructed with this data and x2_mode will be
+#'                ignored \emph{even if its set to \code{NA}}.
+#' @param clust_function A community detection function. Defaults to \link{igraph::cluster_louvain}.
+#' @param contribs Logical. Compute vertex-cluster contribution scores. Defaults to \code{FALSE}.
+#'
+#' @return If a higher order network is computed, a list containing two elements consisting of
+#' objects of class "semnet" corresponding to the first- and second- order networks, named as
+#' "order1" and "order2", respectively. If no higher-order network is requested
+#' (i.e. \code{is.na( x2_mode ) && is.null( X2 ) } ), a single "semnet" class object containing the
+#' network corresponding the \code{X} (i.e. the "order1" element in the list case).
+#'
+#' @export
+graph_make <- function(
+    X, ls, fs=rep( TRUE, ncol( X ) ), tol=1, x2_mode=1, td=NULL, X2=NULL,
+    clust_func=igraph::cluster_louvain, contribs=FALSE, quiet=FALSE
+) {
+    S1 <- semnet_neu( X[ls,ls], quiet=quiet )
+
+    if( !is.na( x2_mode ) || !is.null( X2 ) ) {
+        if( !quiet ) message( 'Producing higher-order network; value will be list of length 2' )
+        if( is.null( X2 ) ) {
+            if( !quiet ) message( sprintf(
+                "Computing second order cooccurrences using mode %d. This may take a while...",
+                x2_mode
+            ) )
+            if( !quiet ) message( sprintf( 'Using feature vectors of length %d', sum( fs ) ) )
+            X2 <- X[ls,fs] %>% simdiv( mode=x2_mode )
+        }
+        S2 <- X2 %>% semnet_neu( quiet=quiet )
+    }
+
+    if( is.null( S2 ) ) return( S1 )
+    else return( list( order1=S1, order2=S2 ) )
+}
+
+semnet_neu <- function( X, quiet=FALSE ) {
+    if( !quiet ) message( sprintf( "Stitching graph for %dx%d matrix with %f total tf mass",
+        nrow( X ), ncol( X ), sum( X )
+    ) )
+    G <- X %>% graph_stitch( mode='undirected', vdf=td, tol=tol )
+    if( !quiet ) message( sprintf( "Clustering graph with %d vertices and %d edges",
+        length( igraph::V( G ) ), length( igraph::E( G ) )
+    ) )
+    K <- G %>% graph_add_cluster_data( clust_func=clust_func, undirected=TRUE )
+    G %<>% add_community_data( K, contribs=contribs )
+    obj <- list( X=X, G=G, K=K )
+    class( obj ) <- 'semnet'
+    return( obj )
+}
+
+#' Stitch network from the given adjacency matrix.
+#'
+#' This function will produce a full graph from all entries in the given adjacency matrix and then
+#' prune the full graph by removing least significant edges while maintaining connectivity.
+#' See \code{wspaces::graph_prune_connected} for details on the pruning procedure.
+#'
+#' @param m         A (square, possibly sparse) adjacency matrix.
+#' @param vdf       An optional data frame with vertex metadata to add as vertex attributes.
+#'                  Defaults to NULL.
+#' @param mode      Character vector of length 1. Passed to
+#'                  \code{igraph::graph_from_adjacency_matrix}. Defaults to 'undirected' (i.e. m
+#'                  will be treated as symmetric).
+#' @param weighted  Logical. Treat entries in m as edge weights. Defaults to TRUE.
+#' @param normalize Logical. Normalize weights to the (0-1] range. Defaults to TRUE.
+#' @param diag      Logical. Include diagonal entries. Passed to
+#'                  \code{igraph::graph_from_adjacency_matrix}. Defaults to FALSE.
+#'
+#' @return An igraph object with the resulting graph.
+#'
+#' @export
+#'
+#' @importFrom igraph graph_from_adjacency_matrix
+graph_stitch <- function(
+    m, vdf=NULL,
+    mode='undirected', weighted=TRUE, normalize=TRUE, diag=FALSE, tol=1
+) {
+    g <- m %>%
+        igraph::graph_from_adjacency_matrix( mode=mode, weighted=weighted, diag=diag ) %>%
+        graph_prune( tol=tol )
+    if( normalize ) {
+        if( !is.null( igraph::edge_attr( g, 'weight' ) ) ) {
+            w <- igraph::edge_attr( g, 'weight' )
+            igraph::edge_attr( g, 'weight' ) <- w / max( w )
+        } else {
+            warning( 'Can\'t normalize weights in unweighted graph!' )
+        }
+    }
+    if( !is.null( vdf ) ) g %<>% graph_add_vertex_data( vdf )
+    return( g )
+}
+
+#' Add vertex data from the given data frame
+#'
+#' This function will add all the values contained in the given data frame as vertex attributes,
+#' retaining variable names as attribute names, optionally prefixed by the given \code{pref} string.
+#'
+#' Igraph does not accept all of \R's data types as attribute values, so some types are coerced
+#' without information loss: logical values are converted to integers and factors are replaced with
+#' their level names as strings. All other values are left unchanged.
+#'
+#' @param g    An igraph object.
+#' @param vdf  A valid lexical data frame with vertex data. See \link{lexical_dataset}.
+#' @param pref An optional prefix for attribute names.
+#'
+#' @return \code{g}, with data from vdf added as vertex attributes.
+#'
+#' @export
+graph_add_vertex_data <- function( g, vdf, pref='' ) {
+    data <- term_data( vdf, names( V( g ) ) )
+    for( n in names( data ) ) {
+        igraph::vertex_attr( g, pref %.% n ) <- if( is.logical( ( v <- data[[n]] ) ) ) {
+            as.integer( v )
+        } else if( is.factor( v ) ) {
+            as.character( v )
+        } else {
+            v
+        }
+    }
+    return( g )
+}
+
+#' @rdname wspaces::graph_prune_connected
+#'
+#' @export
+graph_prune <- function( g, tol=1, dropV=TRUE, quiet=FALSE, ... ) {
+    nv <- length( igraph::V( g ) )
+    ne <- length( igraph::E( g ) )
+    message( sprintf( 'Pruning graph to max dettached component size %d', tol ) )
+    g %<>% graph_prune_connected( verbose=!quiet, dropV=dropV, tol=tol, ... )
+    message( sprintf(
+        "Edge prunning removed %4.2f%% of edges and dropped %4.2f%% of vertices",
+        ( ( ne - length( igraph::E( g ) ) ) / ne ) * 100,
+        ( ( nv - length( igraph::V( g ) ) ) / nv ) * 100
+    ) )
+    return( g )
+}
+
+
 #' Prune a graph maintaining connectivity
 #'
 #' Removes edges from a graph such that the resulting graph maintains connectivity up to the given
@@ -98,14 +265,94 @@ graph_prune_connected <- function(
 #'         otherwise.
 #'
 #' @export
-#' @importFrom igraph components
-graph_connected <- function( g, tol=1, cmps=components( g ) ) {
+graph_connected <- function( g, tol=1, cmps=igraph::components( g ) ) {
     if( cmps$no == 1 ) return( TRUE )
     if( max( cmps$csize[ -which.max( cmps$csize ) ] ) > tol ) {
         return( FALSE )
     } else {
         return( TRUE )
     }
+}
+
+#' Detect communities using the given clustering function.
+#'
+#' Constructs an igraph communities object by applying the given \code{clust_func} community
+#' detection function over the given \code{g} igraph object.
+#'
+#' \code{clust_func} must follow igraph's clustering functions API, i.e. take a graph object as
+#' input and produce an igraph 'communities' object as output.
+#'
+#' @param g          An igraph graph.
+#' @param clust_func A function implementing a clustering algorithm. Defaults to
+#'                   \link{igraph::clustr_louvain}.
+#' @param undirected Logical. Ignore edge directionality, Defalts to TRUE.
+#' @param quiet      Logical. Suppress progress messages. Defaults to FALSE.
+#' @param ...        Additional parameters passed to \code{clust_func}.
+#'
+#' @export
+graph_cluster <- function(
+    g, clust_func=igraph::cluster_louvain, undirected=TRUE, quiet=FALSE, ...
+) {
+    if( undirected ) {
+        g <- igraph::as.undirected( g )
+    }
+    s <- proc.time()
+    c <- clust_func( g, ... )
+    e <- proc.time()
+    if( !quiet ) message( sprintf(
+        "Communities extracted in %8.4f seconds: %d groups, %6.4f mod.",
+        ( e - s )[3], length( c ), igraph::modularity( c )
+    ) )
+    return( c )
+}
+
+#' Add cluster data to vertices and edges
+#'
+#' This function will add cluster data from the given \code{cms} igraph communities object as
+#' vertex and edge attributes.
+#'
+#' Edge attributes added by this function consist of a logical value named 'xing' indicating wether
+#' the respective edge crosses community boundaries or not, as well as a numeric "cluster weight"
+#' value named the same as the given \code{eweight} name with a '_c' suffix, equal to the product
+#' of the respective edge's value in the attribute \code{eweight} attribute and the value of
+#' \code{intra_factor} if the edge is internal to a community and 1 otherwise.
+#'
+#' Vertex attributes added by this function consist of the vertex's community membership as an
+#' integer value named 'comm'. If \code{contrib} is \code{TRUE}, then cluster-vertex contribution
+#' scores will be computed and also added as numeric values named 'wgt_c2v' and 'wgt_v2c' for
+#' cluster-vertex contribution and vertex-cluster contribution scores, respectively. NB: this
+#' computation can be very slow for large networks.
+#'
+#' @param g            An igraph object.
+#' @param cms          An igraph communities object.
+#' @param intra_factor Factor to multiply edge weights for non-community crossing edges.
+#'                     Defaults to 10.
+#' @param eweight      Name for the input edge weight attribute. Defaults to 'weight'.
+#' @param pref         An optional prefix that will be added to all attribute names.
+#' @param contribs     Logical. Add cluster-vertex contribution scores. Defaults to \code{FALSE}
+#' @param quiet        Logical. Suppress all messages. Defaults to \code{FALSE}.
+#'
+#' @return \code{g} with vertex and edge attributes containing relevant data from \code{cms}.
+#'
+#' @export
+graph_add_cluster_data <- function(
+    g, cms, intra_factor=10, eweight='weight', pref=NULL, contribs=FALSE, quiet=FALSE
+) {
+    pref <- if( is.null( pref ) || pref == '' ) '' else pref %.% '_'
+    # edges
+    w <- igraph::edge_attr( g, eweight )
+    igraph::edge_attr( g, pref %.% 'xing' ) <- igraph::crossing( cms, g ) %>% as.integer()
+    igraph::edge_attr( g, pref %.% eweight %.% '_c' ) <- w / ifelse( igraph::crossing( cms, g ), intra_factor, 1 )
+
+    # vertices
+    k <- igraph::membership( cms )
+    igraph::vertex_attr( g, pref %.% 'comm' ) <- k
+    if( contribs ) {
+        if( !quiet ) message( 'Computing cluster-vertex weights. This may a take a bit...' )
+        igraph::vertex_attr( g, pref %.% 'wgt_v2c' ) <- graph_cluster_contrib( g, cms, mode='v2c' )
+        igraph::vertex_attr( g, pref %.% 'wgt_c2v' ) <- graph_cluster_contrib( g, cms, mode='c2v' )
+    }
+    return( g )
 }
 
 #' Community and neighbourhood contributions
@@ -121,32 +368,18 @@ graph_connected <- function( g, tol=1, cmps=components( g ) ) {
 #' The mode parameters controls which direction is computed, 'vc' computes negihborhood to cluster
 #' contribution, 'cv' computes cluster to neighbourhood contributions.
 #'
-#' The attr parameter gives the names of an edge attribute to use as input for the measure function.
-#' If none is given, edges are simply counted for both sets.
-#'
-#' The aggr parameter allows specification of a different aggregation function if edge attributes
-#' are used.
-#'
 #' @param g    An igraph graph.
 #' @param c    An igraph communities object.
 #' @param mode Characer vector indicating the direction of the measure; one of 'vc' or 'cv'. See
 #'             details.
 #' @param vset An optional set of vertices to compute the measure for. Defaults to V( g ) (i.e. all
 #'             vertices).
-#' @param attr The name of an edge attribute to use as input for the aggregation funciton. Set to
-#'             NA to use edge counts instead. Defaults to 'weight' if g is weighted.
-#' @param aggr The aggregation function to use over both sets. Only applicable to edge attributes;
-#'             ignored if attr is NA. Defaults to sum.
 #'
 #' @return A vector of length equal to the number of vertices in the given vset with the requested
 #'         contribution measure values for each vertex in its assigned community.
 #'
 #' @export
-#' @importFrom igraph membership as_adj
-graph_cluster_contrib <- function(
-    g, c, mode=c('cv','vc'), vset=V( g ),
-    weight='weight', aggr=ifelse( is.na( attr ), length, sum )
-) {
+graph_cluster_contrib <- function( g, c, mode=c('cv','vc'), vset=V( g ), weight='weight' ) {
     chk_igraph( g ); chk_comm( c ); mode=match.arg( mode );
     k   <- igraph::membership( c )
     adj <- igraph::as_adj( g, type='both', attr=weight, sparse=FALSE )
@@ -183,7 +416,50 @@ graph_cluster_contrib_matrix <- function( g, cms, contrib_func=graph_cluster_con
     return( out )
 }
 
-#' Cluster distances
+#' Create signature for vertex sets.
+#'
+#' This function will create a unique value for each of the vertex sets defined in the given vector
+#' k, by applying the given signature function to the vertex attributes contained in the given
+#' graph to the set of topn elements in each set in k, filtered by fltr, sorted according to the
+#' results of the given score function.
+#'
+#' By default, this function will filter by pos to select only nouns, will rank vertices according
+#' to the product of their cluster contribution scores, and concantenate the term of the top 10
+#' vertices in each cluster.
+#'
+#' @param g         An igraph graph
+#' @param fltr      A vector to filter vertices in G before computing scores or sorting. Defaults
+#'                  to \code{ pos == 'NN' | pos == 'NP'}, i.e. nouns.
+#' @param k         A vector defining sets for which to compute signatures. Defaultf to 'comm', i.e.
+#'                  communities.
+#' @param score     A function to compute a score for each vertex in each set in k from the
+#'                  attributes contained in g. Defaults to the product of the cluster-vertex
+#'                  contribution scores.
+#' @param desc      Logical. Sort by score in descending order. Defaults to TRUE.
+#' @param topn      Integer. The number of top vertices to include in the signature. Defaults to 10.
+#' @param signature A function that returns a single string from the vertex attributes of the topn
+#'                  vertices in each set. Defaults to concatenation of the topn terms.
+#'
+#' @export
+graph_make_set_sigs <- function( g,
+    fltr=( igraph::vertex_attr( g )$pos == 'NN' | igraph::vertex_attr( g )$pos == 'NP' ),
+    k=igraph::vertex_attr( g, 'comm' ), score=function( df ) df$wgt_v2c * df$wgt_c2v, desc=TRUE,
+    topn=10, signature=function( df ) df$term %>% paste( collapse=' ' )
+) {
+    df <- g %>% gr$vattr() %>% as.data.frame()
+    df <- df[ fltr, ]
+    df$crank <- vapply( 1:nrow( df ), function( r ) {
+        score( df[ r, ] )
+    }, 0.0 )
+    sigs <- vapply( unique( k ), function( ki ){
+        rows <- df[ k[fltr] == ki, ][ order( df[ k[fltr] == ki, ]$crank, decreasing=desc ), ]
+        rows[ 1:min( nrow( rows ), topn ), ] %>%
+            signature() %>% return()
+    }, '' )
+    return( sigs )
+}
+
+#' Cluster alignment
 #'
 #' This function will compute a distance matrix for the clusters found in two different community
 #' extraction results by first computing a vector of vertex weights for each cluster in each
@@ -231,23 +507,23 @@ graph_align_clusters <- function(
     contrib_func=graph_cluster_contrib_matrix, dist_func=dist_hellinger, ...
 ) {
     filt <- if( !is.null( g2 ) ) {
-        if( is.null( vertex_attr( g1, vid ) ) || is.null( vertex_attr( g2, vid ) ) ) {
+        if( is.null( igraph::vertex_attr( g1, vid ) ) || is.null( igraph::vertex_attr( g2, vid ) ) ) {
             stop( "Invalid name for vertex id attr, needed for cross-graph alignment" )
         }
         if( fill ) { # union
-            unique( c( vertex_attr( g1, vid ), vertex_attr( g2, vid ) ) )
+            unique( c( igraph::vertex_attr( g1, vid ), igraph::vertex_attr( g2, vid ) ) )
         } else { # intersection
-            vertex_attr( g1, vid ) %in% vertex_attr( g2, vid )
+            igraph::vertex_attr( g1, vid ) %in% igraph::vertex_attr( g2, vid )
         }
     } else {
-        V( g1  ) %>% as.integer()
+        igraph::V( g1  ) %>% as.integer()
     }
 
     g2 <- if( is.null( g2 ) ) g1 else g2
     m1 <- contrib_func( g1, cms1, ... )
     m2 <- contrib_func( g2, cms2, ... )
-    rownames( m1 ) <- vertex_attr( g1, vid )
-    rownames( m2 ) <- vertex_attr( g2, vid )
+    rownames( m1 ) <- igraph::vertex_attr( g1, vid )
+    rownames( m2 ) <- igraph::vertex_attr( g2, vid )
 
     out <- matrix( NA, nrow=ncol( m1 ), ncol=ncol( m2 ) )
     for( i in 1:nrow( out ) ) {
@@ -285,8 +561,8 @@ graph_alignment_graph <- function( m ) {
     colnames( gm ) <- c( rownames( m ), colnames( m ) )
     gm[ 1:k1, (k1+1):ncol( gm ) ] <- m
     gm[ (k1+1):ncol( gm ), 1:k1 ] <- t( m )
-    g <- graph_from_adjacency_matrix( gm, weighted=TRUE )
-    vertex_attr( g, "type" ) <- c( rep( TRUE, k1 ), rep( FALSE, k2 ) )
+    g <- igraph::graph_from_adjacency_matrix( gm, weighted=TRUE )
+    igraph::vertex_attr( g, "type" ) <- c( rep( TRUE, k1 ), rep( FALSE, k2 ) )
     return( g )
 }
 

@@ -164,6 +164,10 @@ inline F<double,ind,ind> get_func(
 //' Computes one of several weighting and extent functions on the non-zero entries of the given
 //' (sparse) cooccurrence matrix and returns the transformed (sparse) matrix.
 //'
+//' \code{weight_cooc} is the actual workhorse function which can be used directly with its default
+//' values to weight global cooccurrence matrices. \code{weight_sample} is a thin wrapper for
+//' weighting corpus samples that uses marginals from a global cooccurrence matrix.
+//'
 //' Available weighting functions:
 //'
 //' \itemize{
@@ -181,15 +185,13 @@ inline F<double,ind,ind> get_func(
 //'     L( F( w, c ), F( w ), F( c ) )
 //' }{
 //'     L( F( w, c ), F( w ), \frac{F( W, c )}{F( W )} )
-//' } } with \eqn{ L(k,n,x) = x^{k} * ( 1 - x )^{n-k} }
+//' } } with \deqn{ L(k,n,x) = x^{k} * ( 1 - x )^{n-k} }
 //'
 //' @param m        A sparse matrix with raw cooccurrence counts or some function thereof.
-//' @param rowm     A vector of length == nrow( m ) with poplation focal (i.e. row) term
-//'                 frequencies. Coerced to probability internally.
-//'                 NULL by default, computed from m.
-//' @param colm     A vector of length == ncol( m ) with population context (i.e. column) term
-//'                 frequencies. Coerced to probability internally.
-//'                 NULL by default, computed from m.
+//' @param rowm     An optional vector of length == nrow( m ) with population focal (i.e. row) term
+//'                 probabilities. NULL by default, computed from m.
+//' @param colm     An optional vector of length == ncol( m ) with population context (i.e. column)
+//'                 term probabilities. NULL by default, computed from m.
 //' @param positive Logical. Truncate negative values to zero if reasonable (i.e. use log( p + 1 )
 //'                 internally). TRUE by default.
 //' @param ow       Logical. Operate destructively on m by overwriting it with the result. FALSE by
@@ -211,8 +213,8 @@ Rcpp::S4 weight_cooc(
     Vec cmrg = colm.isNull() ? marg_prb( src, Margin::Col ) : Rcpp::as<Vec>( colm.get() );
     if( rmrg.size() != src.cols() ) Rcpp::stop( "Wrong dimension for row marginal vector" );
     if( cmrg.size() != src.cols() ) Rcpp::stop( "Wrong dimension for column marginal vector" );
-    rmrg = ( rmrg.array() / rmrg.sum() ).matrix().eval();
-    cmrg = ( rmrg.array() / rmrg.sum() ).matrix().eval();
+    // rmrg = ( rmrg.array() / rmrg.sum() ).matrix().eval();
+    // cmrg = ( cmrg.array() / cmrg.sum() ).matrix().eval();
     SpMat tgt = ow ? src : Rcpp::as<MSpMat>( clone( m ) );
     F<double,ind,ind> func = get_func( static_cast<Weight>( mode ), src.sum(), rmrg, cmrg, positive );
     impl::weight_cooc( src, tgt, func );

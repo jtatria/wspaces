@@ -2,7 +2,6 @@
 #include <RcppParallel.h>
 #include <unsupported/Eigen/KroneckerProduct>
 
-
 namespace impl {
 
     struct ContribWorker : public RcppParallel::Worker {

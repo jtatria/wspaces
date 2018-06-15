@@ -13,18 +13,19 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-# RJava functions for creating and controlling OBO session objects.
-# TODO: refactor to encapsulate native jav amethods in obo object.
-# TODO: refactor to do without obo objects
-
-NS       <- "edu/columbia/incite/obo"
-OBO_CLZ  <- paste( NS, 'OBO', sep="/" )
-CONF_CLZ <- paste( NS, 'OBOConf', sep='/' )
-DS_CLZ   <- paste( NS, 'util', 'DocSet', sep='/' )
-RHLP_CLZ <- paste( NS, 'util', 'RHelper', sep ='/' )
-
+#
+# RJava functions for creating and controlling Lector session objects.
+# 
+# TODO: refactor to encapsulate native java methods in lctr object.
+# TODO: refactor to do without lctr objects
 # TODO: add logic to check for destruction of JVM on rm of last obo object.
+# 
+
+NS       <- "edu/columbia/incite"
+LCTR_CLZ <- paste( NS, 'Lector', sep="/" )
+CONF_CLZ <- paste( NS, 'Conf', sep='/' )
+DS_CLZ   <- paste( NS, 'corpus', 'DocSet', sep='/' )
+RHLP_CLZ <- paste( NS, 'util', 'Foreign', sep ='/' )
 
 infof <- function( format, ... ) {
     .jinit
@@ -40,22 +41,22 @@ warnf <- function( format, ... ) {
     log$warning( msg )
 }
 
-#' Create a new OBO conf object
+#' Create a new Lector Conf object
 #'
 #' The returned object may be used to modify corpus analysis parameters by using the native java
 #' method 'set'. See examples.
 #'
-#' @return An OBOConf instance.
+#' @return A Lector Conf instance.
 #'
 #' @examples
-#' conf <- obo_mkconf()
+#' conf <- lector_mkconf()
 #' conf@set( 'wPre', 10 ) # Set cooccurrence window leading offset to 10.
 #' conf$set( 'wPos', 10 ) # Set cooccurrence window trailing offset to 10.
-#' obo <- obo_new( conf ) # obtain an OBO index interface object.
+#' lector <- lector_new( conf ) # obtain an Lector index interface object.
 #'
 #' @export
 #' @importFrom rJava .jinit .jnew
-obo_mkconf <- function( ... ) {
+lector_mkconf <- function( ... ) {
     # TODO add par-like behaviour to conf
     args <- list( ... )
     .jinit()
@@ -67,34 +68,34 @@ obo_mkconf <- function( ... ) {
     return( conf )
 }
 
-#' Create OBO interface object.
+#' Create Lector interface object.
 #'
-#' The returned OBO instance object will take its parameters from the given conf object. If no conf
-#' is given, one will be created with default parameters.
+#' The returned Lector instance object will take its parameters from the given conf object. 
+#' If no conf is given, one will be created with default parameters.
 #'
-#' All index access functions require an OBO interface object as first parameter.
+#' All index access functions require a Lector interface object as first parameter.
 #'
-#' @param conf An OBOConf instance, e.g. the value of \code{\link{obo_mkconf}}.
+#' @param conf A Lector Conf instance, e.g. the value of \code{\link{lector_mkconf}}.
 #'
-#' @return An OBO index interface object.
+#' @return A Lector index interface object.
 #'
 #' @export
 #' @importFrom rJava .jinit .jnew
-obo_new <- function( ..., conf=obo_mkconf( ... ) ) {
+lector_new <- function( ..., conf=lector_mkconf( ... ) ) {
     .jinit()
     chk_clz( conf, CONF_CLZ )
-    return( .jnew( OBO_CLZ, conf ) )
+    return( .jnew( LCTR_CLZ, conf ) )
 }
 
 #' Rebuild corpus datasets.
 #'
 #' This function will rebuild all corpus datasets using the parameters currently found in the given
-#' obo object's configuration.
+#' Lector's configuration.
 #'
 #' The produced data sets will be dumped into the current configuration's data directory, using the
 #' configured filenames.
 #'
-#' @param obo An OBO interface object.
+#' @param lctr A Lector interface object.
 #' @param realod Logical indicating whether the new corpus files should be reloaded.
 #' @param ...   Further arguments passed to load_corpus. Ignored if reload is FALSE.
 #'
@@ -102,12 +103,12 @@ obo_new <- function( ..., conf=obo_mkconf( ... ) ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J
-obo_rebuild_corpus <- function( obo, reload=TRUE, ... ) {
+lector_rebuild_corpus <- function( lctr, reload=TRUE, ... ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
-    J( obo, 'rebuildCorpus' )
+    chk_clz( lctr, LCTR_CLZ )
+    J( lctr, 'rebuildCorpus' )
     if( reload ) {
-        load_corpus( obo$conf$dataDir()$toString(), ... )
+        load_corpus( lctr$conf$dataDir()$toString(), ... )
     }
 }
 
@@ -120,7 +121,7 @@ obo_rebuild_corpus <- function( obo, reload=TRUE, ... ) {
 #' all individual terms. If it is equal to one, it will be interpreted as a regular expression. If
 #' it's 0, the returned document set will be the empty set.
 #'
-#' @param obo   An OBO interface object.
+#' @param lctr   A Lector interface object.
 #' @param field A field over which to construct a document set.
 #' @param terms A character vector containing terms to select documents for the DocSet.
 #'
@@ -128,20 +129,20 @@ obo_rebuild_corpus <- function( obo, reload=TRUE, ... ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J .jarray
-obo_mkdocset <- function( obo, field=NULL, terms ) {
+lector_mkdocset <- function( lctr, field=NULL, terms ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
+    chk_clz( lctr, LCTR_CLZ )
     # TODO: add support for int vectors?
     terms <- as.character( terms )
-    field <- if( is.null( field ) ) obo$conf()$fieldDocId() else field
+    field <- if( is.null( field ) ) lctr$conf()$fieldDocId() else field
     if( length( field ) == 0 ) stop( 'empty field given' )
     if( length( field ) > 1 ) {
         infof( 'multiple field names given for doc set. using %s', field[1] )
     }
     if( length( terms ) > 1 ) {
-        return( obo$makeDocSet( field, .jarray( terms ) ) )
+        return( lctr$makeDocSet( field, .jarray( terms ) ) )
     } else {
-        return( obo$makeDocSet( field, terms ) )
+        return( lctr$makeDocSet( field, terms ) )
     }
 }
 
@@ -151,9 +152,9 @@ obo_mkdocset <- function( obo, field=NULL, terms ) {
 #' intersection. This is equivalent to a logical AND over both document sets' vectors, but avoids
 #' instantiating the full int vector.
 
-#' @param ds1  A DocSet, built from \code{\link{obo_mkdocset}}.
-#' @param ds2  A DocSet, built from \code{\link{obo_mkdocset}}.
-#' @param free Logical indicating if the input sets shuld be destroyed in order to attempt recovery
+#' @param ds1  A DocSet, built from \code{\link{lector_mkdocset}}.
+#' @param ds2  A DocSet, built from \code{\link{lector_mkdocset}}.
+#' @param free Logical indicating if the input sets should be destroyed in order to attempt recovery
 #'             of their heap memory. Defaults to FALSE.
 #'
 #' @return A DocSet instance that can be used to select observations from a corpus equal to the
@@ -161,7 +162,7 @@ obo_mkdocset <- function( obo, field=NULL, terms ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J
-obo_intersect <- function( ds1, ds2, free=FALSE ) {
+lector_intersect <- function( ds1, ds2, free=FALSE ) {
     .jinit()
     chk_clz( ds1, DS_CLZ ); chk_clz( ds1, DS_CLZ )
     infof( "Intersecting doc set of size %d with doc set of size %d", ds1$size(), ds2$size() )
@@ -184,20 +185,20 @@ obo_intersect <- function( ds1, ds2, free=FALSE ) {
 #' contain legal entities. 'trials' contain all documents in trial accounts.
 #' \eqn{ testimony \cup legal = trials}.
 #'
-#' @param obo    An OBO interface object
+#' @param lctr    A Lector interface object
 #' @param sample The requested sample. One of "testimony", "legal", or "trials".
 #'
 #' @return A DocSet instance that can be used to select observations from a corpus corresponding
 #'         to the requested sample.
 #' @export
-obo_sample <- function( obo, sample=c('testimony','legal','trials'), negate=FALSE ) {
+lector_sample <- function( lctr, sample=c('testimony','legal','trials'), negate=FALSE ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
+    chk_clz( lctr, LCTR_CLZ )
     sample = match.arg( sample )
     ds <- if( negate ) {
-        ds <- obo$complement( sample )
+        ds <- lctr$complement( sample )
     } else {
-        ds <- obo$getSample( sample )
+        ds <- lctr$getSample( sample )
     }
     return( ds )
 }
@@ -207,8 +208,8 @@ obo_sample <- function( obo, sample=c('testimony','legal','trials'), negate=FALS
 #' Produces a sparse matrix containing cooccurrence counts for all terms in the analysis field over
 #' all documents in the given document set.
 #'
-#' @param obo   An OBO interface object.
-#' @param ds    A DocSet, built from \code{\link{obo_mkdocset}}.
+#' @param lctr   A Lector interface object.
+#' @param ds    A DocSet, built from \code{\link{lector_mkdocset}}.
 #'
 #' @return A sparse matrix containing cooccurrence counts for all terms in the given field in the
 #' given sample of documents.
@@ -216,16 +217,16 @@ obo_sample <- function( obo, sample=c('testimony','legal','trials'), negate=FALS
 #' @export
 #' @importFrom Matrix sparseMatrix rowSums colSums
 #' @importFrom rJava .jinit
-obo_count_cooc <- function( obo, ds=obo$docSample(), shrink=FALSE ) {
+lector_count_cooc <- function( lctr, ds=lctr$docSample(), shrink=FALSE ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ ); chk_clz( ds, DS_CLZ )
+    chk_clz( lctr, LCTR_CLZ ); chk_clz( ds, DS_CLZ )
     prog <- J( RHLP_CLZ, "report" )
-    cooc <- obo$countCooccurrences( ds, prog )
+    cooc <- lctr$countCooccurrences( ds, prog )
     ar <- cooc$arrays()
     m <- sparseMatrix( i=( ar$i + 1 ), j=( ar$j + 1 ), x=ar$x )
     J( RHLP_CLZ, "release", cooc )
     J( RHLP_CLZ, "release", ar )
-    terms <- obo$lexicon()$arrays()$terms
+    terms <- lctr$lexicon()$arrays()$terms
     rownames( m ) <- terms[ 1:nrow( m ) ]
     colnames( m ) <- terms[ 1:ncol( m ) ]
     if( shrink ) m <- m[ rowSums( m ) > 0, colSums( m ) > 0 ]
@@ -237,8 +238,8 @@ obo_count_cooc <- function( obo, ds=obo$docSample(), shrink=FALSE ) {
 #' Produces a frequency table containing term frequencies for all terms in the lexicon in the
 #' documents contained in the given doc set, split by the terms found in the configured split field.
 #'
-#' @param obo An OBO interface object
-#' @param ds  A DocSet, built from \code{\link{obo_mkdocset}}. If none given, defaults to the given
+#' @param lctr A Lector interface object
+#' @param ds  A DocSet, built from \code{\link{lector_mkdocset}}. If none given, defaults to the given
 #'            index's default doc sample.
 #'
 #' @return A lexical dataset containing term frequencies for the given documents over the
@@ -246,15 +247,15 @@ obo_count_cooc <- function( obo, ds=obo$docSample(), shrink=FALSE ) {
 #'
 #' @export
 #' @importFrom rJava .jinit J
-obo_count_freqs <- function( obo, ds=obo$docSample() ) {
+lector_count_freqs <- function( lctr, ds=lctr$docSample() ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ ); chk_clz( ds, DS_CLZ )
+    chk_clz( lctr, LCTR_CLZ ); chk_clz( ds, DS_CLZ )
     prog <- J( RHLP_CLZ, "report" )
-    off <- obo$conf()$freqFile()$toString()
-    obo$conf()$set( obo$conf()$PARAM_FREQ_FILE, ( tmp <- tempfile() ) )
-    freq <- obo$countFrequencies( ds, prog )
-    obo$dumpFrequencies( freq )
-    obo$conf()$set( obo$conf()$PARAM_FREQ_FILE, off )
+    off <- lctr$conf()$freqFile()$toString()
+    lctr$conf()$set( lctr$conf()$PARAM_FREQ_FILE, ( tmp <- tempfile() ) )
+    freq <- lctr$countFrequencies( ds, prog )
+    lctr$dumpFrequencies( freq )
+    lctr$conf()$set( lctr$conf()$PARAM_FREQ_FILE, off )
     J( RHLP_CLZ, "release", freq )
     freqs <- read_frequencies( tmp )
     return( freqs )
@@ -267,16 +268,16 @@ obo_count_freqs <- function( obo, ds=obo$docSample() ) {
 #' The returned values may be used to e.g. list all terms in any field, construct document sets
 #' over any one of the field's terms or combinations thereof, etc.
 #'
-#' @param obo   An OBO interface object.
+#' @param lctr   A Lector interface object.
 #'
 #' @return A character vector with the names of all fields present in the index.
 #'
 #' @export
 #' @importFrom rJava .jinit J
-obo_get_fields <- function( obo ) {
+lector_get_fields <- function( lctr ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
-    return( J( RHLP_CLZ, 'fields', obo$indexReader() ) )
+    chk_clz( lctr, LCTR_CLZ )
+    return( J( RHLP_CLZ, 'fields', lctr$indexReader() ) )
 }
 
 #' Get all terms in the given field.
@@ -284,36 +285,36 @@ obo_get_fields <- function( obo ) {
 #' Obtains a character vector with all the terms found in the given field.
 #'
 #' Elements of the returned vector may be used to construct document sets over the same field
-#' using \code{\link{obo_mkdocset}}.
+#' using \code{\link{lector_mkdocset}}.
 #'
-#' @param obo   An OBO interface object.
-#' @param field A field name, e.g. an element of \code{\link{obo_get_fields}}.
+#' @param lctr   A Lector interface object.
+#' @param field A field name, e.g. an element of \code{\link{lector_get_fields}}.
 #'
 #' @return A character vector containing all the terms found in the given field.
 #'
 #' @export
 #' @importFrom rJava .jinit J
-obo_get_terms <- function( obo, field ) {
+lector_get_terms <- function( lctr, field ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
+    chk_clz( lctr, LCTR_CLZ )
     if( length( field ) > 1 ) {
         warnf( 'multiple field names given for doc set. using %s', field[1] )
     }
-    return( J( RHLP_CLZ, 'terms', obo$indexReader(), field[1] ) )
+    return( J( RHLP_CLZ, 'terms', lctr$indexReader(), field[1] ) )
 }
 
 #' Get the total number of documents in the given index.
 #'
-#' @param obo An OBO interface object.
+#' @param lctr A Lector interface object.
 #'
-#' @return An integer equal to the total number of documents in the given index.
+#' @return A integer equal to the total number of documents in the given index.
 #'
 #' @export
 #' @importFrom rJava .jinit
-obo_numdocs <- function( obo ) {
+lector_numdocs <- function( lctr ) {
     .jinit()
-    chk_clz( obo, OBO_CLZ )
-    return( obo$indexReader()$numDocs() )
+    chk_clz( lctr, LCTR_CLZ )
+    return( lctr$indexReader()$numDocs() )
 }
 
 #' @importFrom rJava %instanceof%
@@ -324,33 +325,34 @@ chk_clz <- function( obj, clz ) {
 }
 
 #' Get a copy of the lexicon.
-#' @param obo An OBO interface object.
+#' @param lctr A Lector interface object.
 #' @return A lexicon data frame, with terms as row names and tf and df as columns.
 #' @export
 #' @importFrom rJava .jinit
-obo_lexicon <- function( obo ) {
+lector_lexicon <- function( lctr ) {
     .jinit()
-    ar = obo$lexicon()$arrays()
+    ar = lctr$lexicon()$arrays()
     lxcn <- data.frame( row.names=ar$terms )
     lxcn[['tf']] <- ar$tf
     lxcn[['df']] <- ar$df
+    J( RHLP_CLZ, "release", ar )
     return( lxcn )
 }
 
-#' Get all defined POS classes in the OBO corpus.
-#' @return Character vector containing all POS class names in OBO.
+#' Get all defined POS classes in the Lector corpus.
+#' @return Character vector containing all POS class names in Lector.
 #' @export
 #' @importFrom rJava .jinit J
-obo_all_pos <- function() {
+lector_all_pos <- function() {
     .jinit()
     return( J( RHLP_CLZ, 'posClasses' ) )
 }
 
-#' Get lexical POS classes in the OBO corpus.
-#' @return Character vector containing lexical POS class names in OBO.
+#' Get lexical POS classes in the Lector corpus.
+#' @return Character vector containing lexical POS class names in Lector.
 #' @export
 #' @importFrom rJava .jinit J
-obo_lex_pos <- function() {
+lector_lex_pos <- function() {
     .jinit()
     return( J( RHLP_CLZ, 'lexClasses' ) )
 }

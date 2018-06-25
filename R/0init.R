@@ -26,12 +26,19 @@ NULL
 
 JAVA_XMX = 2048
 
+LECTOR_JAR = 'lector.jar'
+
 java_setup <- function( libname, pkgname ) {
     # TODO: remove pending rJava memory management
     options( java.parameters=sprintf( "-Xmx%dm", JAVA_XMX ) )
     rJava::.jpackage( pkgname, lib.loc = libname )
 }
 
+# TODO: spawn lector backend to its own package
 .onLoad <- function( libname, pkgname ) {
-    java_setup( libname, pkgname )
+    if( file.exists( file.path( libname, pkgname, 'java', LECTOR_JAR ) ) ) {
+        java_setup( libname, pkgname )    
+    } else {
+        message( "Lector back-end not found. All 'lector_' functions are not available" )
+    }
 }

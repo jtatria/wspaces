@@ -25,23 +25,30 @@ real_t <- object.size( c( 1.0, 1.0 ) ) - object.size( 1.0 )
 #' Load corpus data from the given directory.
 #'
 #' Loads corpus data from the files found in the given directory. Corpus data includes a lexicon
-#' file, frequency counts for all corpus partitions (if any), POS counts for every word (lemma)
+#' file, frequency counts for all corpus partitions (if any), POS class counts for every term
 #' in the lexicon and a cooccurrence matrix.
 #'
 #' See details below for the different file formats used. DSV files are used for lexicon,
 #' frequencies and POS counts data. Cooccurrence counts are saved as a sparse matrix stored in
-#' triplet format as a plain array of (int, int, float) triplets. Each data file's format is
+#' triplet format as a plain array of (coordinates,value) tuples. Each data file's format is
 #' documented in its respective loading function read_*.
+#' 
+#' TODO: Create S3 classes and methods.
 #'
-#' @param dir         Directory to find corpus data files in.
-#' @param lexicon     Lexicon file name, default 'lexicon.tsv'
-#' @param frequencies Frequencies file name, default 'frequencies.tsv'
-#' @param pos_table   POS counts file name, default 'pos_counts.tsv'
-#' @param cooccur     Cooccurrence matrix file name, default 'cooccur.bin'
+#' @param dir         Directory in which to find corpus data files. Defaults to the current working
+#'                    dir.
+#' @param lxcn.file   Lexicon file name. Default 'lxcn.dsv'.
+#' @param freq.file   Frequencies file name. Default 'freq.dsv'.
+#' @param posc.file   POS counts file name. Default 'posc.dsv'.
+#' @param cooc.file   Cooccurrence matrix file name. Default 'cooc.bin'.
 #' @param quiet       Logical indicating whether progress and general stats messages should be
-#'                    silenced.
+#'                    silenced. Defaults to \code{FALSE}.
+#' @param attach      Logical indicating whtether the symbols associated to the loaded objects 
+#'                    should be attached to the given environment. Defaults to \code{FALSE}.
+#' @param env         Environment in which to attach symbols, if \code{attach} is \code{TRUE}.
+#'                    Defaults to \code{.GlobalEnv}, ignored if \code{attach} is \code{FALSE}.
 #'
-#' @return A list of length four containing the loaded corpus datasets.
+#' @return A list with named entries containing the loaded corpus datasets.
 #'
 #' @seealso \code{\link{read_lexicon}}, \code{\link{read_frequencies}},
 #'          \code{\link{read_pos_counts}} and \code{\link{read_cooccur}}.
@@ -49,7 +56,7 @@ real_t <- object.size( c( 1.0, 1.0 ) ) - object.size( 1.0 )
 #' @export
 load_corpus <- function(
     dir=getwd(),
-    lexicon="lxcn.dsv", frequencies="freq.dsv", pos_counts="posc.dsv", cooccur="cooc.bin",
+    lxcn.file="lxcn.dsv", freq.file="freq.dsv", posc.file="posc.dsv", cooc.file="cooc.bin",
     quiet=FALSE, attach=FALSE, env=.GlobalEnv
 ) {
     if( !quiet ) message( sprintf( "Loading wspaces corpus data from %s", dir ) )
@@ -113,6 +120,34 @@ load_corpus <- function(
     return( corpus )
 }
 
+#' Load corpus sample data from the given directory.
+#' 
+#' A corpus sample is defined a subset of documents from a given corpus. All corpus data sets for a 
+#' given sample are compiled considering only documents in the subset in the sample.
+#' Samples can be loaded autonomously, in which case this function does the same as 
+#' \link{load_corpus}, or associated to a set of universe corpus data sets, in which case the 
+#' lexicon from the global corpus is needed to ensure proper term indices for sparse cooccurrence 
+#' matrices. This is irrelevant if no cooccurrence counts are loaded.
+#' 
+#' TODO: merge this function with \link{load_corpus}.
+#' 
+#' @param dir         Directory in which to find corpus data files. Defaults to the current working
+#'                    dir.
+#' @param lxcn        An optional lexicon for the global corpus from which the sample is taken. 
+#'                    Defaults to \code{NULL}.
+#' @param lxcn.file   Lexicon file name for global lexicon. Default 'lxcn.dsv'.
+#' @param freq.file   Sample frequencies file name. Default 'freq.dsv'.
+#' @param posc.file   Sample POS counts file name. Default 'posc.dsv'.
+#' @param cooc.file   Sample cooccurrence matrix file name. Default 'cooc.bin'.
+#' @param quiet       Logical indicating whether progress and general stats messages should be
+#'                    silenced. Defaults to \code{FALSE}.
+#' @param attach      Logical indicating whtether the symbols associated to the loaded objects 
+#'                    should be attached to the given environment. Defaults to \code{FALSE}.
+#' @param env         Environment in which to attach symbols, if \code{attach} is \code{TRUE}.
+#'                    Defaults to \code{.GlobalEnv}, ignored if \code{attach} is \code{FALSE}.
+#'
+#'@return A list with named entries containing the loaded corpus datasets.
+#'
 #' @export
 load_sample <- function(
     dir, lxcn=NULL,
@@ -120,6 +155,7 @@ load_sample <- function(
     quiet=FALSE, attach=FALSE, env=.GlobalEnv
 ) {
     if( !quiet ) message( sprintf( 'Loading corpus sample data from %s', dir ) )
+    
     add.lxcn <- FALSE
     if( is.null( lxcn ) ) {
         lxcn.p <- file.path( dir, lxcn.file )
@@ -128,6 +164,7 @@ load_sample <- function(
         lxcn <- read_lexicon( lxcn.p )
         add.lxcn <- TRUE
     }
+    
     freq <- read_frequencies( file.path( dir, freq.file ) )
     posc <- read_pos_counts( file.path( dir, posc.file ) )
     cooc <- read_cooccur( file.path( dir, cooc.file ), lxcn=lxcn )
@@ -138,6 +175,43 @@ load_sample <- function(
     return( out )
 }
 
+#' Load all samples found in the given base directory.
+#' 
+#' Files corresponding to each sample should be located in subdirectories within the base directory. 
+#' The name of each subdirectory will be used as sample identifier; this function will scan for all 
+#' samples in the given base dir and run \link{load_sample} on each.
+#' 
+#' If no lexicon is given as \code{lxcn}, this function will look for a global lexicon in the file 
+#' named as \code{lxcn.file} \emph{in the base directory}. Other sample data sets will be searched 
+#' for inside each sample's subdirectory.
+#' 
+#' If \code{attach} is \code{TRUE}, this function will attach the symbols corresponding 
+#' \emph{to each sample}, each of which will be associated to a list containing each sample's 
+#' data sets, as per \link{load_sample}.
+#' 
+#' TODO: revise design for load_* functions.
+#' 
+#' @param dir         Directory in which to find corpus data files. Defaults to the current working
+#'                    dir.
+#' @param lxcn        An optional lexicon for the global corpus from which the sample is taken. 
+#'                    Defaults to \code{NULL}.
+#' @param lxcn.file   Lexicon file name for global lexicon. Default 'lxcn.dsv'.
+#' @param freq.file   Sample frequencies file name. Default 'freq.dsv'.
+#' @param posc.file   Sample POS counts file name. Default 'posc.dsv'.
+#' @param cooc.file   Sample cooccurrence matrix file name. Default 'cooc.bin'.
+#' @param quiet       Logical indicating whether progress and general stats messages should be
+#'                    silenced. Defaults to \code{FALSE}.
+#' @param attach      Logical indicating whtether the symbols associated to the loaded objects 
+#'                    should be attached to the given environment. Defaults to \code{FALSE}. See
+#'                    details.
+#' @param env         Environment in which to attach symbols, if \code{attach} is \code{TRUE}.
+#'                    Defaults to \code{.GlobalEnv}, ignored if \code{attach} is \code{FALSE}.
+#'                    
+#' @return A list containing an element for each sample, each of which will be equal to the value 
+#'         of \link{load_sample}.
+#' 
+#' @seealso \code{link{load_sample}} \code{\link{load_corpus}}.
+#' 
 #' @export
 load_sample_set <- function(
     dir=getwd(), lxcn=NULL,
@@ -163,7 +237,6 @@ load_sample_set <- function(
     if( attach ) list2env( samples, envir=env )
     return( samples )
 }
-
 
 # low-level io --------------------------------------------------------------------------------
 
@@ -194,17 +267,20 @@ read_dataset <- function( file, sep='@', header=TRUE, nas=0 ) {
 #' Read lexicon data from DSV file.
 #'
 #' Reads lexicon data from a DSV file. Lexicon data is recorded on disk as a series of
-#' records containings each term's string form, its term total frequency and its total document
-#' frequency. Additional columns may be used for additional corpus-wide term statistics. Terms
+#' records containings each term's string form, its total term frequency and its total document
+#' frequency.
+#' 
+#' Additional columns may be used for additional corpus-wide term statistics. Terms
 #' themselves are \emph{not} stored as data frame columns, but are instead used as row names.
 #'
-#' The character vector terms <- rownames( lexicon ) should be considered the canonical list of
-#' terms in a given corpus, and all other lexical data sets are guaranteed to have no more elements
-#' than its length (though they may be shorter if any filters are in effect)
+#' The character vector \code{terms <- rownames( lexicon )} should be considered the canonical list 
+#' of terms in a given corpus, and all other lexical data sets from the same corpus are guaranteed 
+#' to have no more elements than its length (though they may be shorter if any term filters are in 
+#' effect).
 #'
 #' @param file   Location of the lexicon file on disk.
 #' @param header Logical indicating whether the given file contains a header as first row. Default
-#'               TRUE.
+#'               \code{TRUE}.
 #' @param sep    Character indicating the field separator value. Deafault '@'.
 #'
 #' @return A data frame containing the list of terms as its row names, a tf column for total term
@@ -254,8 +330,8 @@ read_frequencies <- function( file, header=TRUE, sep='@' ) {
 #' @param header Logical indicating whether the given file contains a header as first row. Default
 #'               TRUE.
 #' @param sep    Character indicating the field separator value. Deafault '@'.
-#' @param drop   Logical. Drop POS columns with 0 occurrences (e.g. PUNCT in most cases). Default
-#'               TRUE.
+#' @param drop   Logical. Drop POS class columns with 0 occurrences (e.g. PUNCT in most cases).
+#'               Default TRUE.
 #'
 #' @return A data frame containing the list of terms as its row names, and as many columns as there
 #'         are POS groups in the corresponding tagset, with each term's counts on each POS group.
@@ -323,7 +399,7 @@ read_cooccur <- function( file, lxcn=NULL, shrink=is.null( lxcn ) ) {
 
 #' @export
 read_vectors <- function(
-    filename, n=n, dim=dim, type=c( 'real', 'complex', 'binary' ), combine=FALSE
+    file, n=n, dim=dim, type=c( 'real', 'complex', 'binary' ), combine=FALSE
 ) {
     if( missing( type ) ) type = 'real'
     size <- as.integer(
@@ -334,7 +410,7 @@ read_vectors <- function(
         )
     )
 
-    bytes <- file.info( filename )$size
+    bytes <- file.info( file )$size
     if( bytes %% ( 2 * size ) ) stop( "Truncated or corrupt file!" )
 
     if( !missing( n ) ) {
@@ -343,7 +419,7 @@ read_vectors <- function(
         n <- ( bytes / size / 2 ) / ( dim + 1 )
     } else stop( "Either dim or n must be defined" )
 
-    f <- file( filename, 'rb' )
+    f <- file( file, 'rb' )
     d <- array(
         readBin( f,
             switch( type,
@@ -371,7 +447,7 @@ read_vectors <- function(
 #' even if the requested dataset contains no observations for some terms (values will be NA) and
 #' 3) contain a column indicating the row's term, named as \code{conf()$termId}.
 #'
-#' @param d A dataset created by an obo object or read from disk.
+#' @param d A dataset created by a Lector object or read from disk.
 #'
 #' @return d with internal conventions enforced: a 'key' column preserving original sort order and
 #'         a \code{conf()$termId} column indicating each's row term, with all data columns
@@ -381,7 +457,7 @@ read_vectors <- function(
 #' @importFrom data.table setkeyv setcolorder
 # TODO: define standard structure for data and metadata
 lexical_dataset <- function( d ) {
-    rn <- obo_mkconf()$termId()
+    rn <- lector_mkconf()$termId()
     rownames( d ) <- d[[rn]]
     d <- d[, ! names( d ) %in% rn] # FUCK R.
     return( d )
@@ -495,14 +571,16 @@ lexical_sample <- function( tf, filter=NULL, theta=.95, univ=FALSE, sort=FALSE, 
 
 #' Extract term data from the given lexical dataset.
 #'
-#' Extracts term data from the given term character vector by matching the given terms against the
-#' rownames in the given dataset. All lexical datasets constructed by wspaces keep their term
-#' identifier as rownames.
+#' Extracts term data from the given terms character vector from the given named vector, matrix or 
+#' data.frame \link{lexical_dataset}.
+#' 
+#' Use this method to consistently extract data from different datasets for the same lexicon for a 
+#' given subset of terms. Calls \link{term_idx} internally.
 #'
-#' @param d A lexical dataset, i.e. a data frame or matrix with terms as row names.
+#' @param d A \link{lexical_dataset}, i.e. a data frame or matrix with lexicon terms as row names.
 #' @param terms A character vector with terms to get data for.
 #'
-#' @return A subset of d containing only entries that are in terms.
+#' @return A proper subset of \code{d} containing only entries in terms.
 #'
 #' @export
 term_data <- function( d, terms ) {
@@ -510,15 +588,16 @@ term_data <- function( d, terms ) {
     return( if( is.vector( d ) ) d[ filter ] else d[ filter, ] )
 }
 
-#' Get index vector into the given data for the given terms.
+#' Get index vector for the given terms into the given lexical dataset.
 #'
-#' Generates an index vector for each entry in the given terms character vector into the elements
-#' or rows of the given named vector, matrix or lexical dataset.
+#' Generates an index vector for the given terms character vector into the elements or rows of the 
+#' given named vector, matrix or lexical dataset.
 #'
-#' Use this method to consistently extract data from different sources for a given subset of terms.
+#' Use this method to consistently extract data from different datasets for the same lexicon for a 
+#' given subset of terms.
 #'
-#' @param d Data into which t compute index vector. Can be a named vector, named matrix or lexical
-#'          dataset.
+#' @param d Dataset into which to get index vector. Can be a named vector, named matrix or a
+#'          \link{lexical_dataset}.
 #' @param terms A character vector with the terms for which to compute indices.
 #'
 #' @return An index vector with the location of data entries in d for the terms in terms.

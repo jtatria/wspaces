@@ -15,11 +15,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # RJava functions for creating and controlling Lector session objects.
-# 
+#
 # TODO: refactor to encapsulate native java methods in lctr object.
 # TODO: refactor to do without lctr objects
-# TODO: add logic to check for destruction of JVM on rm of last obo object.
-# 
+# TODO: add logic to check for destruction of JVM on rm of last Lector object.
+#
 
 NS       <- "edu/columbia/incite"
 LCTR_CLZ <- paste( NS, 'Lector', sep="/" )
@@ -41,18 +41,32 @@ warnf <- function( format, ... ) {
     log$warning( msg )
 }
 
-#' Create a new Lector Conf object
+#' @importFrom rJava %instanceof%
+chk_clz <- function( obj, clz ) {
+    if( !obj %instanceof% clz ) {
+        stop( 'Object is not an instance of ' %.% clz )
+    }
+}
+
+#' Create a new Lector configuration object.
 #'
 #' The returned object may be used to modify corpus analysis parameters by using the native java
 #' method 'set'. See examples.
+#' 
+#' The native java method \code{printParams} may be used to obtain a list of all parameter names 
+#' with a short description. The native method \code{printSettings} may be used to print the current
+#' parameters values.
 #'
 #' @return A Lector Conf instance.
 #'
 #' @examples
 #' conf <- lector_mkconf()
-#' conf@set( 'wPre', 10 ) # Set cooccurrence window leading offset to 10.
-#' conf$set( 'wPos', 10 ) # Set cooccurrence window trailing offset to 10.
-#' lector <- lector_new( conf ) # obtain an Lector index interface object.
+#' conf$printSettings() # Prints default values
+#' conf$set( 'home_dir', getwd() ) # Set Home directory to current working directory.
+#' conf$set( 'wPre', 5 ) # Set cooccurrence window leading offset to 10.
+#' conf$set( 'wPos', 7 ) # Set cooccurrence window trailing offset to 10.
+#' conf$printSettings()
+#' lector <- lector_new( conf ) # obtain a Lector index interface object.
 #'
 #' @export
 #' @importFrom rJava .jinit .jnew
@@ -62,7 +76,7 @@ lector_mkconf <- function( ... ) {
     .jinit()
     conf <- .jnew( CONF_CLZ )
     for( arg in names( args ) ) {
-        par <- if( grep( "_(file|dir)", arg ) ) path.expand( args[[arg]] ) else args[[arg]]
+        par <- if( grepl( "_(file|dir)", arg ) ) path.expand( args[[arg]] ) else args[[arg]]
         conf$set( arg, par )
     }
     return( conf )
@@ -70,8 +84,8 @@ lector_mkconf <- function( ... ) {
 
 #' Create Lector interface object.
 #'
-#' The returned Lector instance object will take its parameters from the given conf object. 
-#' If no conf is given, one will be created with default parameters.
+#' The returned Lector instance object will take its parameters from the given conf object.
+#' If no conf is given, one will be created internally with default parameters.
 #'
 #' All index access functions require a Lector interface object as first parameter.
 #'
@@ -81,7 +95,7 @@ lector_mkconf <- function( ... ) {
 #'
 #' @export
 #' @importFrom rJava .jinit .jnew
-lector_new <- function( ..., conf=lector_mkconf( ... ) ) {
+lector_new <- function( conf=lector_mkconf() ) {
     .jinit()
     chk_clz( conf, CONF_CLZ )
     return( .jnew( LCTR_CLZ, conf ) )
@@ -177,28 +191,35 @@ lector_intersect <- function( ds1, ds2, free=FALSE ) {
 
 #' Obtain document sets for different document samples.
 #'
-#' Produces a doc set instance representing the requested sample. Samples are hardcoded for now,
-#' pending a stale API to pass index queries back to the backend.
+#' Produces a doc set instance representing the requested sample.
+#' Samples must be requested with Lucene query objects for now, pending a stable API to pass 
+#' queries back to the index.
 #'
-#' Backend currently offers three samples: 'testimony' corresponds to all documents in a trial that
-#' do not contain any legal entities. 'legal' corresponds to all documents in a trial that do
-#' contain legal entities. 'trials' contain all documents in trial accounts.
-#' \eqn{ testimony \cup legal = trials}.
-#'
-#' @param lctr    A Lector interface object
-#' @param sample The requested sample. One of "testimony", "legal", or "trials".
+#' @param lctr   A Lector interface object.
+#' @param query  A lucene query object.
+#' @param negate Logical. Return the sample's complement instead.
 #'
 #' @return A DocSet instance that can be used to select observations from a corpus corresponding
 #'         to the requested sample.
+#'
+#' @examples
+#' \dontrun{
+#' lctr <- lector_new()
+#' # This needs to be replaced by a friendlier interface.
+#' q <- rJava::.jnew( "org.apache.lucene.search.TermQuery", "a_field", "term" )
+#' ds <- lector_sample( lctr, q )
+#' sample_data <- lector_count_cooc( lctr, ds ) # or lector_count_freqs( lctr, ds ), etc
+#' }
+#'
 #' @export
-lector_sample <- function( lctr, sample=c('testimony','legal','trials'), negate=FALSE ) {
+#' @importFrom rJava .jinit J
+lector_sample <- function( lctr, query, negate=FALSE ) {
     .jinit()
     chk_clz( lctr, LCTR_CLZ )
-    sample = match.arg( sample )
     ds <- if( negate ) {
-        ds <- lctr$complement( sample )
+        ds <- J( paste( NS, "corpus", "Samples", sep="/"), 'complement', lctr$indexReader(), query )
     } else {
-        ds <- lctr$getSample( sample )
+        ds <- J( paste( NS, "corpus", "Samples", sep="/"), 'getSample', lctr$indexReader(), query )
     }
     return( ds )
 }
@@ -317,12 +338,6 @@ lector_numdocs <- function( lctr ) {
     return( lctr$indexReader()$numDocs() )
 }
 
-#' @importFrom rJava %instanceof%
-chk_clz <- function( obj, clz ) {
-    if( !obj %instanceof% clz ) {
-        stop( 'Object is not an instance of ' %.% clz )
-    }
-}
 
 #' Get a copy of the lexicon.
 #' @param lctr A Lector interface object.

@@ -3,7 +3,6 @@
 #include <unsupported/Eigen/KroneckerProduct>
 
 namespace impl {
-
     struct ContribWorker : public RcppParallel::Worker {
         RcppParallel::RVector<double> tgt;
         F<ind> func;
@@ -21,6 +20,7 @@ namespace impl {
 //' @export
 // [[Rcpp::export]]
 RVecD c2v_contrib( const Mat& adj, const Ivec& k_memb ) {
+    if( adj.rows() != adj.cols() ) Rcpp::stop( "adj is not a square!" );
     Ivec no   = Ivec::Zero( k_memb.size() );
     Ivec yes  = Ivec::Ones( k_memb.size() );
     const Imat zero = Imat::Zero( adj.rows(), adj.cols() );
@@ -44,6 +44,7 @@ RVecD c2v_contrib( const Mat& adj, const Ivec& k_memb ) {
 //' @export
 // [[Rcpp::export]]
 RVecD v2c_contrib( const Mat& adj, const Ivec& k_memb ) {
+    if( adj.rows() != adj.cols() ) Rcpp::stop( "adj is not a square!" );
     Ivec no   = Ivec::Zero( k_memb.size() );
     F<ind> func = [&]( ind i ) -> scalar {
         int k = k_memb( i );

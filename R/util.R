@@ -208,9 +208,9 @@ sample_margins <- function( s, u, rank=c('row','col'), prob=TRUE ) {
 #' @param ... Additional parameters passed to \link{weight_cooc}.
 #' @export
 weight_sample <- function( m, u=m, ... ) {
-    r_mrg <- sample_margins( s, u, rank='row' )
-    c_mrg <- sample_margins( s, u, rank='col' )
-    wcooc <- weight_cooc( s, r_mrg, c_mrg, ... )
+    r_mrg <- sample_margins( m, u, rank='row' )
+    c_mrg <- sample_margins( m, u, rank='col' )
+    wcooc <- weight_cooc( m, r_mrg, c_mrg, ... )
     return( wcooc )
 }
 

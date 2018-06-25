@@ -238,7 +238,7 @@ lector_sample <- function( lctr, query, negate=FALSE ) {
 #' @export
 #' @importFrom Matrix sparseMatrix rowSums colSums
 #' @importFrom rJava .jinit
-lector_count_cooc <- function( lctr, ds=lctr$docSample(), shrink=FALSE ) {
+lector_count_cooc <- function( lctr, ds=lctr$docSample(), shrink=TRUE ) {
     .jinit()
     chk_clz( lctr, LCTR_CLZ ); chk_clz( ds, DS_CLZ )
     prog <- J( RHLP_CLZ, "report" )

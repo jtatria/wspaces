@@ -18,7 +18,7 @@
 ####                 Functions for creating and manipulating semantic networks                  ####
 ####################################################################################################
 
-numake <- function(
+graph_make <- function(
     X, ls=rep( TRUE, nrow( X ) ), fs=rep( TRUE, ncol( X ) ), sim.func=NULL, 
     edge.mode=c( 'auto', 'directed', 'undirected' ), edge.normalize=TRUE, allow.loops=TRUE,
     prune.tol=1, prune.sort=NULL,
@@ -57,78 +57,88 @@ numake <- function(
     }
     
     if( !is.null( vertex.data ) ) G %<>% graph_add_vertex_data( vertex.data )
+    
+    obj <- structure( list(
+        X=X, G=G, params=list(
+            prune.sort     = prune.sort,
+            sim.func       = sim.func,
+            prune.tol      = prune.tol,
+            edge.normalize = edge.normalize,
+            allow.loops    = allow.loops
+        )
+    ), class='semnet' )
     return( g )
 }
 
 # Construction and pruning --------------------------------------------------------------------
 
-#' Semantic Networks
-#'
-#' This function wraps a number of lower-level functions to generate semantic networks consistently
-#' with a given set of parameters.
-#'
-#' In the simplest case, it will construct a first-order network using the given value of \code{X}
-#' as an adjacency matrix, for all terms indicated by the given lexical sampling vector \code{ls}.
-#'
-#' If \code{x2_mode} is not \code{NA} or a value is given for \code{X2}, it will also compute a
-#' higher order semantic network, either using the given value of \code{x2_mode} to compute a
-#' similarity matrix calling \link{simdiv} or using the given \code{X2} value directly. If the
-#' higher order matrix is computed internally, an optional \code{fs} vector can be used to select
-#' a subset of available features, greatly speeding up computation at the cost of dropping some
-#' features from consideration.
-#'
-#' In all cases this function will apply the relevant filtering for e.g. lexical sampling and
-#' call \link{stitch} to construct an igraph graph object, then prune the resulting network up to
-#' the given \code{tol} value by calling \link{prune} and detect communities over the pruned
-#' network by calling the given \code{clust_func} clustering function.
-#'
-#' @param X       A cooccurrence matrix.
-#' @param ls      A logical vector for lexical sampling. See \link{lexical_sample}.
-#' @param fs      A logical vector for feature sampling. Defaults to all features.
-#' @param tol     Integer. Connectivity tolerance for prunning. See \link{prune}.
-#' @param x2_mode Integer. Mode for second-order network. See \link{simdiv} for possible values.
-#'                Set to \code{NA} to skip higher-order network construction.
-#' @param td      Optional term data to add as vertex attributes.
-#' @param X2      A higher-order similarity matrix. Defaults to \code{NULL}. If present, a
-#'                higher-order network will be constructed with this data and x2_mode will be
-#'                ignored \emph{even if its set to \code{NA}}.
-#' @param clust_function A community detection function. Defaults to \link{igraph::cluster_louvain}.
-#' @param contribs Logical. Compute vertex-cluster contribution scores. Defaults to \code{FALSE}.
-#'
-#' @return If a higher order network is computed, a list containing two elements consisting of
-#' objects of class "semnet" corresponding to the first- and second- order networks, named as
-#' "order1" and "order2", respectively. If no higher-order network is requested
-#' (i.e. \code{is.na( x2_mode ) && is.null( X2 ) } ), a single "semnet" class object containing the
-#' network corresponding the \code{X} (i.e. the "order1" element in the list case).
-#'
-#' @export
-graph_make <- function(
-    X, ls, fs=rep( TRUE, ncol( X ) ), x2_mode=1, X2=NULL,
-    tol=1, cluster_func=igraph::cluster_louvain, contribs=FALSE, td=NULL,
-    quiet=FALSE
-) {
-    S1 <- semnet_neu(
-        X[ls,ls], tol=tol, cluster_func=cluster_func, contribs=contribs, td=td, quiet=quiet
-    )
-
-    if( !is.na( x2_mode ) || !is.null( X2 ) ) {
-        if( !quiet ) message( 'Producing higher-order network; value will be list of length 2' )
-        if( is.null( X2 ) ) {
-            if( !quiet ) message( sprintf(
-                "Computing second order cooccurrences using mode %d. This may take a while...",
-                x2_mode
-            ) )
-            if( !quiet ) message( sprintf( 'Using feature vectors of length %d', sum( fs ) ) )
-            X2 <- X[ls,fs] %>% simdiv( mode=x2_mode )
-        }
-        S2 <- X2 %>% semnet_neu(
-            tol=tol, cluster_func=cluster_func, contribs=contribs, td=td, quiet=quiet
-        )
-    }
-
-    if( is.null( S2 ) ) return( S1 )
-    else return( list( order1=S1, order2=S2 ) )
-}
+#' #' Semantic Networks
+#' #'
+#' #' This function wraps a number of lower-level functions to generate semantic networks consistently
+#' #' with a given set of parameters.
+#' #'
+#' #' In the simplest case, it will construct a first-order network using the given value of \code{X}
+#' #' as an adjacency matrix, for all terms indicated by the given lexical sampling vector \code{ls}.
+#' #'
+#' #' If \code{x2_mode} is not \code{NA} or a value is given for \code{X2}, it will also compute a
+#' #' higher order semantic network, either using the given value of \code{x2_mode} to compute a
+#' #' similarity matrix calling \link{simdiv} or using the given \code{X2} value directly. If the
+#' #' higher order matrix is computed internally, an optional \code{fs} vector can be used to select
+#' #' a subset of available features, greatly speeding up computation at the cost of dropping some
+#' #' features from consideration.
+#' #'
+#' #' In all cases this function will apply the relevant filtering for e.g. lexical sampling and
+#' #' call \link{stitch} to construct an igraph graph object, then prune the resulting network up to
+#' #' the given \code{tol} value by calling \link{prune} and detect communities over the pruned
+#' #' network by calling the given \code{clust_func} clustering function.
+#' #'
+#' #' @param X       A cooccurrence matrix.
+#' #' @param ls      A logical vector for lexical sampling. See \link{lexical_sample}.
+#' #' @param fs      A logical vector for feature sampling. Defaults to all features.
+#' #' @param tol     Integer. Connectivity tolerance for prunning. See \link{prune}.
+#' #' @param x2_mode Integer. Mode for second-order network. See \link{simdiv} for possible values.
+#' #'                Set to \code{NA} to skip higher-order network construction.
+#' #' @param td      Optional term data to add as vertex attributes.
+#' #' @param X2      A higher-order similarity matrix. Defaults to \code{NULL}. If present, a
+#' #'                higher-order network will be constructed with this data and x2_mode will be
+#' #'                ignored \emph{even if its set to \code{NA}}.
+#' #' @param clust_function A community detection function. Defaults to \link{igraph::cluster_louvain}.
+#' #' @param contribs Logical. Compute vertex-cluster contribution scores. Defaults to \code{FALSE}.
+#' #'
+#' #' @return If a higher order network is computed, a list containing two elements consisting of
+#' #' objects of class "semnet" corresponding to the first- and second- order networks, named as
+#' #' "order1" and "order2", respectively. If no higher-order network is requested
+#' #' (i.e. \code{is.na( x2_mode ) && is.null( X2 ) } ), a single "semnet" class object containing the
+#' #' network corresponding the \code{X} (i.e. the "order1" element in the list case).
+#' #'
+#' #' @export
+#' graph_make <- function(
+#'     X, ls, fs=rep( TRUE, ncol( X ) ), x2_mode=1, X2=NULL,
+#'     tol=1, cluster_func=igraph::cluster_louvain, contribs=FALSE, td=NULL,
+#'     quiet=FALSE
+#' ) {
+#'     S1 <- semnet_neu(
+#'         X[ls,ls], tol=tol, cluster_func=cluster_func, contribs=contribs, td=td, quiet=quiet
+#'     )
+#' 
+#'     if( !is.na( x2_mode ) || !is.null( X2 ) ) {
+#'         if( !quiet ) message( 'Producing higher-order network; value will be list of length 2' )
+#'         if( is.null( X2 ) ) {
+#'             if( !quiet ) message( sprintf(
+#'                 "Computing second order cooccurrences using mode %d. This may take a while...",
+#'                 x2_mode
+#'             ) )
+#'             if( !quiet ) message( sprintf( 'Using feature vectors of length %d', sum( fs ) ) )
+#'             X2 <- X[ls,fs] %>% simdiv( mode=x2_mode )
+#'         }
+#'         S2 <- X2 %>% semnet_neu(
+#'             tol=tol, cluster_func=cluster_func, contribs=contribs, td=td, quiet=quiet
+#'         )
+#'     }
+#' 
+#'     if( is.null( S2 ) ) return( S1 )
+#'     else return( list( order1=S1, order2=S2 ) )
+#' }
 
 semnet_neu <- function(
     X,tol=1, cluster_func=igraph::cluster_louvain, contribs=FALSE, td=NULL, quiet=FALSE
@@ -187,8 +197,6 @@ graph_stitch <- function(
     if( !is.null( vdf ) ) g %<>% graph_add_vertex_data( vdf )
     return( g )
 }
-
-
 
 #' Threshold pruning maintaining connectivity
 #' 

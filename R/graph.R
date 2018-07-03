@@ -18,6 +18,50 @@
 ####                 Functions for creating and manipulating semantic networks                  ####
 ####################################################################################################
 
+numake <- function(
+    X, ls=rep( TRUE, nrow( X ) ), fs=rep( TRUE, ncol( X ) ), sim.func=NULL, 
+    edge.mode=c( 'auto', 'directed', 'undirected' ), edge.normalize=TRUE, allow.loops=TRUE,
+    prune.tol=1, prune.sort=NULL,
+    vertex.data=NULL,
+    ...
+) {
+    X %<>% X[ls,fs]
+    if( !is.null( sim.func ) ) X %<>% sim.func
+    edge.mode <- match.arg( edge.mode )
+    edge.mode <- ifelse( edge.mode == 'auto',
+        ifelse( isSymmetric( unname( X ) ),
+            'undirected',
+            'directed'
+        ),
+        edge.mode
+    )
+    
+    G <- X %>% igraph::graph_from_adjacency_matrix(
+        mode=edge.mode, diag=allow.loops, weighted=TRUE 
+    )
+    
+    edges <- if( is.null( prune.sort ) ) {
+        igraph::E( g )[ order( igraph::edge_attr( g, attr ), decreasing=TRUE ) ]
+    } else if( is.function( prune.sort ) ) {
+        igraph::E( g )[ order( prune.sort( g, ... ), decreasing=TRUE ) ]
+    }
+    G %<>% graph_prune( edges=edges, tol=prune.tol, desc=desc, dropV=TRUE, verbose=FALSE )
+    
+    if( edge.normalize ) {
+        if( !is.null( igraph::edge_attr( g, 'weight' ) ) ) {
+            w <- igraph::edge_attr( g, 'weight' )
+            igraph::edge_attr( g, 'weight' ) <- w / max( w )
+        } else {
+            warning( 'Can\'t normalize weights in unweighted graph!' )
+        }
+    }
+    
+    if( !is.null( vertex.data ) ) G %<>% graph_add_vertex_data( vertex.data )
+    return( g )
+}
+
+# Construction and pruning --------------------------------------------------------------------
+
 #' Semantic Networks
 #'
 #' This function wraps a number of lower-level functions to generate semantic networks consistently
@@ -92,7 +136,7 @@ semnet_neu <- function(
     if( !quiet ) message( sprintf( "Stitching graph for %dx%d matrix with %f total tf mass",
         nrow( X ), ncol( X ), sum( X )
     ) )
-    G <- X %>% graph_stitch( mode='undirected', vdf=td, tol=tol )
+    G <- X %>% graph_stitch( mode='undirected', vdf=td, tol=tol, verbose=!quiet )
     if( !quiet ) message( sprintf( "Clustering graph with %d vertices and %d edges",
         length( igraph::V( G ) ), length( igraph::E( G ) )
     ) )
@@ -127,11 +171,11 @@ semnet_neu <- function(
 #' @importFrom igraph graph_from_adjacency_matrix
 graph_stitch <- function(
     m, vdf=NULL,
-    mode='undirected', weighted=TRUE, normalize=TRUE, diag=FALSE, tol=1
+    mode='undirected', weighted=TRUE, normalize=TRUE, diag=FALSE, tol=1, verbose=FALSE
 ) {
     g <- m %>%
         igraph::graph_from_adjacency_matrix( mode=mode, weighted=weighted, diag=diag ) %>%
-        graph_prune( tol=tol )
+        graph_prune( tol=tol, verbose=verbose )
     if( normalize ) {
         if( !is.null( igraph::edge_attr( g, 'weight' ) ) ) {
             w <- igraph::edge_attr( g, 'weight' )
@@ -146,21 +190,26 @@ graph_stitch <- function(
 
 
 
-#' Prune a graph maintaining connectivity
-#'
-#' Removes edges from a graph such that the resulting graph maintains connectivity up to the given
+#' Threshold pruning maintaining connectivity
+#' 
+#' This function will attempt to remove as many edges as possible following some order of edge 
+#' significance, while maintaining total graph connectivity up to the given vertex dettachment 
 #' tolerance.
+#' 
+#' Different prunning strategies can be implemented via different edge sorting orders according to
+#' some edge significance criterion. Naive thresholding will consider each edge's weight as its 
+#' significance.
+#' 
+#' Internally, this function will try to find an optimum significance threshold through a pivot 
+#' search over the entire significance range. If \code{verbose} is \code{TRUE}, the progress of the 
+#' pivot search is printed to output to show the algorithm's optimization process; this is 
+#' sometimes useful to analyze degenerate results.
 #'
-#' The given tolerance value indicates the maximum size of detached components that will be
-#' tolerated when determining connectivity. i.e. a tolerance of one implies the graph will still be
-#' considered connected if the size of any detached component after edge removal is no greater than
-#' one.
-#'
-#' Edges are removed according to the significance order provided in the given edges vector or,
-#' if none is provided, by the order induced by the given attribute.
-#'
-#' graph_prune is a verbose wrapper, graph_prune_connected the actual workhorse function.
-#'
+#' NB: be advised that this strategy may fail for some graphs, e.g. if all vertices dettach from 
+#' the main component in components smaller than the accepted tolerance, the algorithm will happily 
+#' proceed to delete all edges in the graph. Lowering the connectivity threshold may sometimes help,
+#' but in most cases a different edge sorting strategy is needed. See \link{graph_edge_score}.
+#' 
 #' @param g     An igraph graph.
 #' @param edges A vector of edges, sorted according to their significance.
 #' @param tol   An integer indicating the maximum allowed disconnected component size.
@@ -176,7 +225,7 @@ graph_stitch <- function(
 #' @export
 #' @importFrom igraph V E edge_attr components
 graph_prune <- function(
-    g, edges=NULL, tol=1, attr='weight', desc=TRUE, verbose=FALSE, dropV=TRUE
+    g, edges=NULL, tol=1, attr='weight', desc=TRUE, dropV=TRUE, verbose=FALSE
 ) {
     chk_igraph( g )
 
@@ -225,14 +274,14 @@ graph_prune <- function(
 #'
 #' This function will return true if the maximum component size of all components detached from the
 #' largest component is greater or equal to the given tolerance. E.g. a tolerance of one implies
-#' that a graph will still be considered connected if the minor components are at most orphan nodes,
-#' a tolerance of 2 implies the same if the minor components are at most only dyads, etc.
+#' that a graph will be considered connected if all minor components are at most orphan nodes,
+#' a tolerance of 2 implies the same if all minor components are at most only dyads, etc.
 #'
-#' This function will call \code{igraph::components( g )} if no value is given for the cmps
-#' parameter. \emph{This can be extremely slow}, but so far I have not been able to find or produce
+#' This function will call \code{igraph::components( g )} if no value is given for \code{cmps}.
+#' \emph{This can be extremely slow}, but so far I have not been able to find or produce
 #' a faster component determination strategy.
 #' If you know of one, please contact me (e.g. if you know how to compute matrix kernels in less
-#' than O(n^3))
+#' than \eqn{O(n^3)} )
 #'
 #' @param g    An igraph graph.
 #' @param tol  An integer indicating the maximum size of detached components. Defaults to 1.
@@ -244,43 +293,12 @@ graph_prune <- function(
 #' @export
 graph_connected <- function( g, tol=1, cmps=igraph::components( g ) ) {
     if( cmps$no == 1 ) return( TRUE )
+    if( cmps$no > 1 && tol == 0 ) return( false )
     if( max( cmps$csize[ -which.max( cmps$csize ) ] ) > tol ) {
         return( FALSE )
     } else {
         return( TRUE )
     }
-}
-
-#' Detect communities using the given clustering function.
-#'
-#' Constructs an igraph communities object by applying the given \code{clust_func} community
-#' detection function over the given \code{g} igraph object.
-#'
-#' \code{clust_func} must follow igraph's clustering functions API, i.e. take a graph object as
-#' input and produce an igraph 'communities' object as output.
-#'
-#' @param g            An igraph graph.
-#' @param cluster_func A function implementing a clustering algorithm. Defaults to
-#'                     \link{igraph::clustr_louvain}.
-#' @param undirected   Logical. Ignore edge directionality, Defalts to TRUE.
-#' @param quiet        Logical. Suppress progress messages. Defaults to FALSE.
-#' @param ...          Additional parameters passed to \code{clust_func}.
-#'
-#' @export
-graph_cluster <- function(
-    g, cluster_func=igraph::cluster_louvain, undirected=TRUE, quiet=FALSE, ...
-) {
-    if( undirected ) {
-        g <- igraph::as.undirected( g )
-    }
-    s <- proc.time()
-    c <- cluster_func( g, ... )
-    e <- proc.time()
-    if( !quiet ) message( sprintf(
-        "Communities extracted in %8.4f seconds: %d groups, %6.4f mod.",
-        ( e - s )[3], length( c ), igraph::modularity( c )
-    ) )
-    return( c )
 }
 
 #' Add vertex data from the given data frame
@@ -346,70 +364,22 @@ graph_add_cluster_data <- function(
     g, cms, intra_factor=10, eweight='weight', pref=NULL, contribs=FALSE, quiet=FALSE
 ) {
     pref <- if( is.null( pref ) || pref == '' ) '' else pref %.% '_'
-    
+
     # edges
     x <- igraph::crossing( cms, g )
     igraph::edge_attr( g, pref %.% 'xing' ) <- x %>% as.integer()
     w <- igraph::edge_attr( g, eweight )
-    igraph::edge_attr( g, pref %.% eweight %.% '_c' ) <- w / ifelse( x, intra_factor, 1 )
+    igraph::edge_attr( g, pref %.% eweight %.% '_c' ) <- w * ifelse( x, intra_factor, 1 )
 
     # vertices
     k <- igraph::membership( cms )
     igraph::vertex_attr( g, pref %.% 'comm' ) <- k
     if( contribs ) {
         if( !quiet ) message( 'Computing cluster-vertex weights. This may a take a bit...' )
-        igraph::vertex_attr( g, pref %.% 'wgt_v2c' ) <- graph_cluster_contrib( g, cms, mode='v2c' )
-        igraph::vertex_attr( g, pref %.% 'wgt_c2v' ) <- graph_cluster_contrib( g, cms, mode='c2v' )
+        igraph::vertex_attr( g, pref %.% 'wgt_v2c' ) <- graph_cluster_contribs( g, k, mode='vc' )
+        igraph::vertex_attr( g, pref %.% 'wgt_c2v' ) <- graph_cluster_contribs( g, k, mode='cv' )
     }
     return( g )
-}
-
-#' Community and neighbourhood contributions
-#'
-#' This function computes the contributions of either a vertex's neighbourhood to its enclosing
-#' community or a vertex's community to its sorrounding neighbourhood.
-#'
-#' Contributions are computed for each vertes as a ratio of a measure function of a numerator
-#' set equal to a vertex's non-community crossing edges over a measure function over a denominator
-#' set equal to a) all of its incident edges in the case of cluster to neighbourhood contribution
-#' and b) all of its enclosing community in the case of neighbourhood to cluster contributions.
-#'
-#' The mode parameters controls which direction is computed, 'vc' computes negihborhood to cluster
-#' contribution, 'cv' computes cluster to neighbourhood contributions.
-#'
-#' @param g      An igraph graph.
-#' @param k      A vertex-cluster membership vector.
-#' @param mode   The direction of the measure; one of 'vc' or 'cv'. See details.
-#' @param vset   An optional set of vertices to compute the measure for. Defaults to V( g ) (i.e. all
-#'               vertices).
-#' @param matrix Logical. Return vertex-cluster matrix instead of a score vector. Useful for
-#'               cluster similarity computations. Defaults to \code{FALSE}
-#'
-#' @return If \code{matrix} is \code{FALSE}, a vector of length equal to the number of vertices in
-#'         the given vset with the requested contribution measure values for each vertex in its
-#'         assigned community.
-#'         If \code{matrix} is \code{TRUE}, a matrix with as many rows as vertices in \code{vset}
-#'         and as many columns as unique values in \code{k}.
-#'
-#' @export
-graph_cluster_contribs <- function( g, k, mode=c('cv','vc'), vset=V( g ), weight='weight' ) {
-    chk_igraph( g )
-    mode  <- match.arg( mode )
-    adj <- igraph::as_adj( g, type='both', attr=weight, sparse=FALSE )
-    
-    cwt <- switch( match.arg( mode ), cv=c2v_contrib( adj, k ), vc=v2c_contrib( adj, k ) )
-
-    if( matrix ) {
-        ks <- unique( k )
-        out <- matrix( NA, nrow=length( V( g ) ), ncol=length( ks ) )
-        for( i in 1:length( ks ) ) {
-            out[,i] <- ifelse( k == ks[i], cwt, 0 )
-        }
-    } else {
-        out <- cwt
-    }
-
-    return( out )
 }
 
 #' Create signature for vertex sets.
@@ -429,14 +399,14 @@ graph_cluster_contribs <- function( g, k, mode=c('cv','vc'), vset=V( g ), weight
 #' @param k          A membership vector with sets to compute signatures for. Defaultf to 'comm',
 #'                   i.e. communities.
 #' @param score.func A function to compute vertex scores in each set in \code{k} from the
-#'                   vertex attributes available in \code{g}. Defaults to the product of the 
+#'                   vertex attributes available in \code{g}. Defaults to the product of the
 #'                   cluster-vertex contribution scores. See \link{graph_cluster_contribs}.
-#' @param desc       Logical. Sort by the value of \code{score.func} in descending order. Defaults 
+#' @param desc       Logical. Sort by the value of \code{score.func} in descending order. Defaults
 #'                   to TRUE.
 #' @param topn       Integer. The number of vertices to include in the signature. Defaults to 10.
 #'                   Set to NA to include all vertices.
-#' @param sig.func   A signature function that will receive the vertex attribute values for the 
-#'                   \code{topn} members in each set, and should return a character value to use as 
+#' @param sig.func   A signature function that will receive the vertex attribute values for the
+#'                   \code{topn} members in each set, and should return a character value to use as
 #'                   set signature. Defaults to the concatenation of the vertices' terms.
 #'
 #' @export
@@ -458,6 +428,182 @@ graph_make_set_sigs <- function( g,
     }, '' )
     return( sigs )
 }
+
+# Clustering and cluster scores ---------------------------------------------------------------
+
+#' Detect communities using the given clustering function.
+#'
+#' Constructs an igraph communities object by applying the given \code{clust_func} community
+#' detection function over the given \code{g} igraph object.
+#'
+#' \code{clust_func} must follow igraph's clustering functions API, i.e. take a graph object as
+#' input and produce an igraph 'communities' object as output.
+#'
+#' @param g            An igraph graph.
+#' @param cluster_func A function implementing a clustering algorithm. Defaults to
+#'                     \link{igraph::clustr_louvain}.
+#' @param undirected   Logical. Ignore edge directionality, Defalts to TRUE.
+#' @param quiet        Logical. Suppress progress messages. Defaults to FALSE.
+#' @param ...          Additional parameters passed to \code{clust_func}.
+#'
+#' @return An igraph communities object with the clustering results.
+#' 
+#' @export
+graph_cluster <- function(
+    g, cluster_func=igraph::cluster_louvain, undirected=TRUE, quiet=FALSE, ...
+) {
+    if( undirected ) {
+        g <- igraph::as.undirected( g )
+    }
+    s <- proc.time()
+    c <- cluster_func( g, ... )
+    e <- proc.time()
+    if( !quiet ) message( sprintf(
+        "Communities extracted in %8.4f seconds: %d groups, %6.4f mod.",
+        ( e - s )[3], length( c ), igraph::modularity( c )
+    ) )
+    return( c )
+}
+
+
+
+#' Community and neighbourhood contributions
+#'
+#' This function computes the contributions of either a vertex's neighbourhood to its enclosing
+#' community or a vertex's community to its sorrounding neighbourhood.
+#'
+#' Contributions are computed for each vertes as a ratio of a measure function of a numerator
+#' set equal to a vertex's non-community crossing edges over a measure function over a denominator
+#' set equal to a) all of its incident edges in the case of cluster to neighbourhood contribution
+#' and b) all of its enclosing community in the case of neighbourhood to cluster contributions.
+#'
+#' The mode parameters controls which direction is computed, 'vc' computes negihborhood to cluster
+#' contribution, 'cv' computes cluster to neighbourhood contributions.
+#'
+#' @param g      An igraph graph or dense adjacency matrix.
+#' @param k      A vertex-cluster membership vector.
+#' @param mode   The direction of the measure; one of 'vc' or 'cv'. See details.
+#' @param matrix Logical. Return vertex-cluster matrix instead of a score vector. Useful for
+#'               cluster similarity computations. Defaults to \code{FALSE}
+#'
+#' @return If \code{matrix} is \code{FALSE}, a vector of length equal to the number of vertices in
+#'         the given vset with the requested contribution measure values for each vertex in its
+#'         assigned community.
+#'         If \code{matrix} is \code{TRUE}, a matrix with as many rows as vertices in \code{vset}
+#'         and as many columns as unique values in \code{k}.
+#'
+#' @export
+graph_cluster_contribs <- function( ... ) {
+    UseMethod( "graph_cluster_contribs" )
+}
+
+#' @export
+graph_cluster_contribs.igraph <- function( g, ..., weight='weight' ) {
+    m <- igraph::as_adj( g, type='both', attr=weight, sparse=FALSE )
+    graph_cluster_contribs( m, ... )
+}
+
+#' @export
+graph_cluster_contribs.matrix <- function( m, k, mode=c('cv','vc'), as.matrix=FALSE ) {
+    mode  <- match.arg( mode )
+    cwt <- switch( match.arg( mode ), cv=c2v_contrib( m, k ), vc=v2c_contrib( m, k ) )
+    if( as.matrix ) {
+        ks <- unique( k )
+        out <- matrix( NA, nrow=length( V( g ) ), ncol=length( ks ) )
+        for( i in 1:length( ks ) ) {
+            out[,i] <- ifelse( k == ks[i], cwt, 0 )
+        }
+    } else {
+        out <- cwt
+    }
+    return( out )
+}
+
+# Edge scoring --------------------------------------------------------------------------------
+
+#' Compute edge significance scores with the given function
+#' 
+#' This function will apply \code{score.func} over all edges in a graph, passing as parameters each 
+#' edge's weight, the total incoming strength of its head vertex, the total outgoing strength of 
+#' its tail vertex and the total weight in the graph, for e.g. compuation of some probabilistic 
+#' edge significance measure. See \link{graph_edge_score_ident} for a null implementation that 
+#' simply returns the weight; See \link{graph_edge_score_mlf} for an implemenation of Dianati's
+#' Marginal Likelihood Filter.
+#' 
+#' TODO: fast matrix -> igraph edge attribute mappings would allow for considerable speed-up.
+#' 
+#' @param g          An igraph graph.
+#' @param score.func An edge scoring function with signature
+#'                   \code{function( w, head_s, tail_S, total_w )} giving edge's weight, total head 
+#'                   vertex strength, total tail vertex strength and total graph weigth.
+#' @param src.attr   An attribute to read edge weights from. Defaults to \code{'weight'}.
+#' @param tgt.attr   A target attribute to write scores to. Defaults to \code{NULL}: don't write 
+#'                   scores back to graph.
+#' 
+#' @return A vector of edge scores.
+#' 
+#' @export
+graph_edge_score <- function(
+    g, score.func=graph_edge_score_mlf, src.attr='weight', tgt.attr=NULL
+) {
+    edges   <- E( g )
+    heads   <- head_of( g, edges )
+    tails   <- tail_of( g, edges )
+    head_s  <- strength( g, heads, mode='in' )
+    tail_s  <- strength( g, heads, mode='out' )
+    weights <- edge_attr( g, src.attr )
+    browser()
+    res <- score.func( weights, head_s, tail_s, sum( weights ) )
+    if( !is.null( tgt.attr ) ) {
+        edge_attr( g, tgt.attr ) <- res
+    }
+    return( res )
+}
+
+#' No-op edge scoring function.
+#' 
+#' Does nothing: score edges according to their given weight \code{w}.
+#' 
+#' @param w       A vector of edge weights. Returned as is.
+#' @param head_s  A vector of edge's head vertices' total strength. Ignored.
+#' @param tail_s  A vector of edge's tail vertices' total strength. Ignored.
+#' @param total_w The total weight of edges in the source graph. Ignored.
+#' 
+#' @return This is a no-op function that returns \code{w}.
+#' 
+#' @export
+graph_edge_score_ident <- function( w, head_s, tail_s, total ) {
+    return( w )
+}
+
+#' Navid Dianati's Marginal Likelihood Filter.
+#' 
+#' Computes edge significances as the p-value associated to the given edges weight as the 
+#' outcome of a set of \code{total_w} Bernoulli trials with probability equal to 
+#' \eqn{head_s * tail_s / total_w ^2}.
+#' 
+#' Since Dianati's original implementation was designed for integer-weighted edges (i.e. 
+#' multigraphs modeling actual ) using the binominal distribution, this function will naively 
+#' convert all parameters to integers before computing the p-value.
+#' 
+#' TODO: Citation needed.
+#' 
+#' @param w       A vector of edge weights.
+#' @param head_s  A vector of edge's head vertices' total strength.
+#' @param tail_s  A vector of edge's tail vertices' total strength.
+#' @param total_w The total weight of edges in the source graph.
+#' 
+#' @export
+graph_edge_score_mlf <- function( w, head_s, tail_s, total_w ) {
+    x <- w %>% floor() %>% as.integer()
+    n <- total %>% floor() %>% as.integer()
+    p <- ( head_s * tail_s ) / ( total^2 )
+    r <- binom.test( x, n, p, alternative="greater" )
+    return( r )
+}
+
+
+# Cluster alignment ---------------------------------------------------------------------------
 
 #' Cluster alignment
 #'
@@ -565,6 +711,8 @@ graph_alignment_graph <- function( m ) {
     igraph::vertex_attr( g, "type" ) <- c( rep( TRUE, k1 ), rep( FALSE, k2 ) )
     return( g )
 }
+
+# Non-export utility functions ----------------------------------------------------------------
 
 #' @importFrom igraph is.igraph
 chk_igraph <- function( g ) {

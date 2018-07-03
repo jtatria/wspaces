@@ -4,14 +4,29 @@
 
 namespace impl {
     struct ContribWorker : public RcppParallel::Worker {
-        RcppParallel::RVector<double> tgt;
-        F<ind> func;
+        RcppParallel::RVector<double> m_tgt;
+        F<ind> m_func;
 
-        ContribWorker( RVecD tgt, F<ind> func ) : tgt( tgt ), func( func ) {}
+        ContribWorker( RVecD tgt, F<ind> func ) : m_tgt( tgt ), m_func( func ) {}
 
         void operator()( std::size_t begin, std::size_t end ) {
             for( ind i = begin; i < end; ++i ) {
-                tgt[i] = func( i );
+                m_tgt[i] = m_func( i );
+            }
+        }
+    };
+
+    struct EdgeScoreWorker : public RcppParallel::Worker {
+        RcppParallel::RMatrix<double> m_tgt;
+        F<ind,ind> m_func;
+
+        EdgeScoreWorker( RMatD tgt, F<ind,ind> func ) : m_tgt( tgt ), m_func( func ) {}
+
+        void operator()( std::size_t begin, std::size_t end ) {
+            for( ind i = begin; i < end; ++i ) {
+                for( ind j = 0; j < m_tgt.nrow(); ++j ) {
+                    m_tgt.row( i )[j] = m_func( i, j );
+                }
             }
         }
     };
@@ -59,4 +74,21 @@ RVecD v2c_contrib( const Mat& adj, const Ivec& k_memb ) {
     impl::ContribWorker wrkr( r, func );
     RcppParallel::parallelFor( 0, adj.rows(), wrkr );
     return( r );
+}
+
+RMatD edge_score_mlf( const Mat& adj, bool directed=false ) {
+    F<ind,ind> func;
+    if( directed ) {
+        func = [&]( ind i, ind j ) -> scalar {
+            return 0.0;
+        };
+    } else {
+        func = [&]( ind i, ind j ) -> scalar {
+            return 0.0;
+        };
+    }
+    RMatD r( adj.rows(), adj.cols() );
+    impl::EdgeScoreWorker wrkr( r, func );
+    RcppParallel::parallelFor( 0, adj.rows(), wrkr );
+    return r;
 }

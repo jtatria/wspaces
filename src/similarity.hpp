@@ -19,26 +19,42 @@ enum Sim {
 
 //' @export
 // [[Rcpp::export]]
-double sim_additive( const Vec& vi, const Vec& vj, ind i, ind j ) {
-    double num = ( vi.array() > 0 && vj.array() > 0 ).select( ( vi + vj ), 0 ).sum();
-    double den = vi.sum();
+double sim_additive( const Vec& w1, const Vec& w2, ind i, ind j ) {
+    double num = ( w1.array() > 0 && w2.array() > 0 ).select( ( w1 + w2 ), 0 ).sum();
+    double den = w1.sum();
     return num / den;
 }
 
+//' Weed and Weir's Difference Weighted Cooccurrence Retrieval Model.
+//' 
+//' 
+//' 
 //' @export
 // [[Rcpp::export]]
-double sim_dweighted( const Vec& vi, const Vec& vj, ind i, ind j ) {
-    double num = ( vi.cwiseMin( vj ).array().sum() );
-    double den = vi.sum();
+double sim_dweighted( const Vec& w1, const Vec& w2, ind i, ind j ) {
+    double num = ( w1.cwiseMin( w2 ).array().sum() );
+    double den = w1.sum();
     return num / den;
 }
 
+//' Cosine similarity.
+//' 
+//' The cosine similarity is equal to the vector dot product between v and u divided by the product 
+//' of their norms: \eqn{ cos( v, u ) = \frac{}v \cdot u}{\lVert v \rVert \lVert u \rVert } }.
+//' 
+//' Note that this measure is symmetric and induces a proper distance when taking its recyprocal.
+//' 
+//' @param v A vector.
+//' @param u A vector.
+//' 
+//' @return A scalar value \eqn{ cos( v, u ) \in [ -1, 1 ] }.
+//' 
 //' @export
 // [[Rcpp::export]]
-double sim_cosine( const Vec& vi, const Vec& vj ) {
-    if( vi.isZero() || vj.isZero() ) return 0;
-    double num = vi.dot( vj );
-    double den = vi.norm() * vj.norm();
+double sim_cosine( const Vec& v, const Vec& u ) {
+    if( v.isZero() || u.isZero() ) return 0;
+    double num = v.dot( u );
+    double den = v.norm() * u.norm();
     return num / den;
 }
 
@@ -55,9 +71,9 @@ double sim_cosine( const Vec& vi, const Vec& vj ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double div_kulback_leibler( const Vec& vi, const Vec& vj, bool coerce=false ) {
-    Vec pi = vi.array() / vi.sum();
-    Vec pj = vj.array() / vj.sum();
+double div_kulback_leibler( const Vec& p, const Vec& q, bool coerce=false ) {
+    Vec pi = p.array() / p.sum();
+    Vec pj = q.array() / q.sum();
     return ( ( pi.array() / pj.array() ).log() * pi.array() ).sum();
 }
 
@@ -80,11 +96,11 @@ double div_kulback_leibler( const Vec& vi, const Vec& vj, bool coerce=false ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double div_jensen_shannon( const Vec& vi, const Vec& vj, bool coerce=false ) {
-    Vec m = ( vi + vj ) / 2.0;
-    double kl_vi = div_kulback_leibler( vi, m );
-    double kl_vj = div_kulback_leibler( vj, m );
-    return( ( kl_vi + kl_vj ) / 2.0 );
+double div_jensen_shannon( const Vec& p, const Vec& q, bool coerce=false ) {
+    Vec m = ( p + q ) / 2.0;
+    double kl_p = div_kulback_leibler( p, m );
+    double kl_q = div_kulback_leibler( q, m );
+    return( ( kl_p + kl_q ) / 2.0 );
 }
 
 //' Bhattacharyya coefficient
@@ -102,9 +118,9 @@ double div_jensen_shannon( const Vec& vi, const Vec& vj, bool coerce=false ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double coef_bhattacharyya( const Vec& vi, const Vec& vj ) {
-    Vec pi = vi.array() / vi.sum();
-    Vec pj = vj.array() / vj.sum();
+double coef_bhattacharyya( const Vec& p, const Vec& q ) {
+    Vec pi = p.array() / p.sum();
+    Vec pj = q.array() / q.sum();
     return ( ( pi.array() * pj.array() ).sqrt() ).sum();
 }
 
@@ -129,8 +145,8 @@ double coef_bhattacharyya( const Vec& vi, const Vec& vj ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double div_bhattacharyya( const Vec& vi, const Vec& vj ) {
-    double coef = coef_bhattacharyya( vi, vj );
+double div_bhattacharyya( const Vec& p, const Vec& q ) {
+    double coef = coef_bhattacharyya( p, q );
     return std::log<double>( coef ).real() * -1;
 }
 
@@ -154,16 +170,16 @@ double div_bhattacharyya( const Vec& vi, const Vec& vj ) {
 //'
 //' @export
 // [[Rcpp::export]]
-double dist_hellinger( const Vec& vi, const Vec& vj ) {
-    double bha = coef_bhattacharyya( vi, vj );
+double dist_hellinger( const Vec& p, const Vec& q ) {
+    double bha = coef_bhattacharyya( p, q );
     return std::sqrt<double>( 1 - bha ).real();
 }
 
 //' @export
 // [[Rcpp::export]]
-double dist_jaccard( const Vec& vi, const Vec& vj ) {
-    double num = ( vi.cwiseMin( vj ) ).sum();
-    double den = ( vi.cwiseMax( vj ) ).sum();
+double dist_jaccard( const Vec& a, const Vec& b ) {
+    double num = ( a.cwiseMin( b ) ).sum();
+    double den = ( a.cwiseMax( b ) ).sum();
     return( num / den );
 }
 

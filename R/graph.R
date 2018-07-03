@@ -23,6 +23,8 @@ graph_make <- function(
     edge.mode=c( 'auto', 'directed', 'undirected' ), edge.normalize=TRUE, allow.loops=TRUE,
     prune.tol=1, prune.sort=NULL,
     vertex.data=NULL,
+    cluster=TRUE, cluster.func=function( G ) igraph::cluster_louvain( igraph::as.undirected( G ) ),
+    cluster.contribs=FALSE,
     ...
 ) {
     X %<>% X[ls,fs]
@@ -58,8 +60,14 @@ graph_make <- function(
     
     if( !is.null( vertex.data ) ) G %<>% graph_add_vertex_data( vertex.data )
     
+    if( cluster ) {
+        K <- graph_cluster( G, cluster.func=cluster.func )
+        G %<>% graph_add_cluster_data( G, K, contribs=cluster.contribs, quiet=FALSE )
+    }
+    
     obj <- structure( list(
-        X=X, G=G, params=list(
+        X=X, G=G, K=K,
+        params=list(
             prune.sort     = prune.sort,
             sim.func       = sim.func,
             prune.tol      = prune.tol,
@@ -458,13 +466,13 @@ graph_make_set_sigs <- function( g,
 #' 
 #' @export
 graph_cluster <- function(
-    g, cluster_func=igraph::cluster_louvain, undirected=TRUE, quiet=FALSE, ...
+    g, cluster.func=igraph::cluster_louvain, undirected=TRUE, quiet=FALSE, ...
 ) {
     if( undirected ) {
         g <- igraph::as.undirected( g )
     }
     s <- proc.time()
-    c <- cluster_func( g, ... )
+    c <- cluster.func( g, ... )
     e <- proc.time()
     if( !quiet ) message( sprintf(
         "Communities extracted in %8.4f seconds: %d groups, %6.4f mod.",

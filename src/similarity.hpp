@@ -25,10 +25,6 @@ double sim_additive( const Vec& w1, const Vec& w2, ind i, ind j ) {
     return num / den;
 }
 
-//' Weed and Weir's Difference Weighted Cooccurrence Retrieval Model.
-//' 
-//' 
-//' 
 //' @export
 // [[Rcpp::export]]
 double sim_dweighted( const Vec& w1, const Vec& w2, ind i, ind j ) {
@@ -38,17 +34,17 @@ double sim_dweighted( const Vec& w1, const Vec& w2, ind i, ind j ) {
 }
 
 //' Cosine similarity.
-//' 
-//' The cosine similarity is equal to the vector dot product between v and u divided by the product 
+//'
+//' The cosine similarity is equal to the vector dot product between v and u divided by the product
 //' of their norms: \eqn{ cos( v, u ) = \frac{}v \cdot u}{\lVert v \rVert \lVert u \rVert } }.
-//' 
+//'
 //' Note that this measure is symmetric and induces a proper distance when taking its recyprocal.
-//' 
+//'
 //' @param v A vector.
 //' @param u A vector.
-//' 
+//'
 //' @return A scalar value \eqn{ cos( v, u ) \in [ -1, 1 ] }.
-//' 
+//'
 //' @export
 // [[Rcpp::export]]
 double sim_cosine( const Vec& v, const Vec& u ) {

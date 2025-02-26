@@ -10,5 +10,5 @@ src/*.dll
 man/*
 R/RcppExports.R
 src/RcppExports.cpp
-obo-java
-
+NAMESPACE
+inst/java/*

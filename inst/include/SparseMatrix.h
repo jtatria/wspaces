@@ -1,1 +1,1 @@
-/home/jta/src/local/sparse-matrix/SparseMatrix.h
+/home/jta/src/sparse-matrix/SparseMatrix.h

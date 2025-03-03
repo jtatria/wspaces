@@ -80,11 +80,11 @@ RMatD edge_score_mlf( const Mat& adj, bool directed=false ) {
     F<ind,ind> func;
     if( directed ) {
         func = [&]( ind i, ind j ) -> scalar {
-            return 0.0;
+            return 0.0; // TODO
         };
     } else {
         func = [&]( ind i, ind j ) -> scalar {
-            return 0.0;
+            return 0.0; // TODO
         };
     }
     RMatD r( adj.rows(), adj.cols() );

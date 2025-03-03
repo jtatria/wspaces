@@ -10,7 +10,6 @@ src/*.dll
 man/*
 R/RcppExports.R
 src/RcppExports.cpp
-NAMESPACE
 inst/java/*
 
 *.tar.gz

@@ -1,4 +1,0 @@
-[submodule "incite-lector"]
-	path = incite-lector
-	url = git@github.com:jtatria/incite-lector
-	branch = master

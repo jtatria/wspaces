@@ -36,7 +36,7 @@ double sim_dweighted( const Vec& w1, const Vec& w2, ind i, ind j ) {
 //' Cosine similarity.
 //'
 //' The cosine similarity is equal to the vector dot product between v and u divided by the product
-//' of their norms: \eqn{ cos( v, u ) = \frac{}v \cdot u}{\lVert v \rVert \lVert u \rVert } }.
+//' of their norms: \eqn{ cos( v, u ) = \frac{ v \cdot u}{\lVert v \rVert \lVert u \rVert } }.
 //'
 //' Note that this measure is symmetric and induces a proper distance when taking its recyprocal.
 //'
